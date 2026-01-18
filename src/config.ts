@@ -2,11 +2,14 @@ import path from 'path';
 
 const parseCorsOrigins = (): string[] => {
   const raw = process.env.CORS_ORIGIN;
+  const origins = new Set<string>();
+
   if (raw && raw.trim() !== '') {
-    return raw
+    raw
       .split(',')
       .map(origin => origin.trim())
-      .filter(origin => origin.length > 0);
+      .filter(origin => origin.length > 0)
+      .forEach(origin => origins.add(origin));
   }
 
   const fallbacks = new Set<string>();
@@ -24,10 +27,31 @@ const parseCorsOrigins = (): string[] => {
   }
 
   if (fallbacks.size > 0) {
-    return Array.from(fallbacks);
+    fallbacks.forEach(origin => origins.add(origin));
   }
 
-  return ['*'];
+  const localOrigins = [
+    'https://localhost',
+    'http://localhost',
+    'capacitor://localhost',
+    'ionic://localhost',
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://localhost:4173',
+    'https://localhost:3000',
+    'https://localhost:5173',
+    'https://localhost:4173',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:4173',
+  ];
+  localOrigins.forEach(origin => origins.add(origin));
+
+  if (origins.size === 0) {
+    origins.add('*');
+  }
+
+  return Array.from(origins);
 };
 
 const deleteLogsDir = process.env.DELETE_ACCOUNT_LOG_DIR || path.join(process.cwd(), 'logs');
