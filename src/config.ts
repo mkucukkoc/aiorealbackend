@@ -43,9 +43,9 @@ export const config = {
   },
   refreshTtlDays: Number(process.env.REFRESH_TTL_DAYS || 60), // 1 ay (30 gün)
   redis: {
-    url: process.env.REDIS_URL || 'redis://red-d2nf9m7diees73cjdo40:6379',
+    url: process.env.REDIS_URL || 'redis://red-d5mljplactks73buu2q0:6379',
     password: process.env.REDIS_PASSWORD || '',
-    host: process.env.REDIS_HOST || 'red-d2nf9m7diees73cjdo40',
+    host: process.env.REDIS_HOST || 'red-d5mljplactks73buu2q0',
     port: Number(process.env.REDIS_PORT || 6379),
   },
   google: {
