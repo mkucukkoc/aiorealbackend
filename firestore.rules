@@ -1,0 +1,59 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Users collection - Chat ve mesaj verileri
+    match /users/{userId}/chats/{chatId} {
+      // Geçici olarak tüm erişime izin ver (geliştirme için)
+      allow read, write: if true;
+    }
+    
+    match /users/{userId}/chats/{chatId}/messages/{messageId} {
+      // Geçici olarak tüm erişime izin ver (geliştirme için)
+      allow read, write: if true;
+    }
+    
+    // Presentations collection
+    match /presentations/{presentationId} {
+      // Geçici olarak tüm erişime izin ver (geliştirme için)
+      allow read, write: if true;
+    }
+    
+    // Subsc collection - Kullanıcı bilgileri
+    match /subsc/{userId} {
+      // Sadece kendi verilerine erişim
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      
+      // Public read for email verification (opsiyonel)
+      allow read: if resource.data.email != null;
+    }
+    
+    // Sessions collection - Session yönetimi
+    match /sessions/{sessionId} {
+      // Sadece kendi session'larına erişim
+      allow read, write: if request.auth != null && 
+        resource.data.userId == request.auth.uid;
+    }
+    
+    // Audit logs - Sadece okuma
+    match /auditLogs/{logId} {
+      // Sadece kendi log'larına erişim
+      allow read: if request.auth != null && 
+        resource.data.userId == request.auth.uid;
+    }
+    
+    // Password reset tokens - Sadece okuma
+    match /passwordResetTokens/{tokenId} {
+      // Sadece kendi token'larına erişim
+      allow read: if request.auth != null && 
+        resource.data.userId == request.auth.uid;
+    }
+    
+    // Admin access (opsiyonel)
+    match /{document=**} {
+      // Admin kullanıcıları için tam erişim
+      allow read, write: if request.auth != null && 
+        request.auth.token.admin == true;
+    }
+  }
+}

@@ -1,0 +1,44 @@
+# Dependencies & build outputs
+node_modules/
+dist/
+coverage/
+coverage\ 2/
+
+# Expo / React Native artifacts
+android/
+android\ 2/
+*.keystore
+*.png
+*.webp
+*.jar
+app.json
+app\ 2.json
+
+# Logs & temporary files
+*.log
+*.tmp
+*.env
+firebase-debug.log
+firebase-debug\ 2.log
+
+# Duplicate configuration dumps
+package\ 2.json
+package-lock\ 2.json
+tsconfig\ 2.json
+vitest.config\ 2.ts
+firestore\ 2.rules
+jest.config\ 2.js
+RENDER_ENV_VARS\ 2.md
+
+# Misc
+scripts\ 2/
+server/
+server\ 2/
+android_build_steps.txt
+
+# Duplicate backups
+.gitignore 2
+Dockerfile 2
+
+# Expo project state
+.expo/
