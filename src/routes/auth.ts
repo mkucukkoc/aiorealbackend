@@ -899,7 +899,10 @@ export function createAuthRouter(): Router {
           message: 'Verification code sent to your email' 
         });
       } catch (error) {
-        logger.error('Send registration OTP error:', error);
+        logger.error(
+          { err: error, email: req.body?.email, operation: 'register_email_start' },
+          'Send registration OTP error'
+        );
         res.status(500).json({ 
           error: 'internal_error',
           message: 'Failed to send verification code' 
