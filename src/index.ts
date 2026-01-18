@@ -57,6 +57,7 @@ import { createAppleAuthRouter } from './routes/apple';
 import { createPasswordResetRouter } from './routes/passwordReset';
 import { createDeleteAccountRouter } from './routes/deleteAccount';
 import { createPremiumRouter } from './routes/premium';
+import { createAnalysisRouter } from './routes/analysis';
 // Chat router: resolve robustly to avoid ESM/CJS interop issues in Render
 // We intentionally avoid static import here
 import notificationRouter from './routes/notifications';
@@ -222,6 +223,7 @@ const startServer = async () => {
     mountRouter(`/api/${API_VERSION}/auth/password-reset`, createPasswordResetRouter, 'passwordReset');
     mountRouter(`/api/${API_VERSION}/delete-account`, createDeleteAccountRouter, 'deleteAccount');
     mountRouter(`/api/${API_VERSION}/premium`, createPremiumRouter, 'premium');
+    mountRouter(`/api/${API_VERSION}/analysis`, createAnalysisRouter, 'analysis');
     mountRouterInstance(`/api/${API_VERSION}/webhooks/revenuecat`, revenuecatWebhookRouter, 'revenuecatWebhook');
     if (createChatRouter) {
       mountRouter(`/api/${API_VERSION}/chat`, createChatRouter, 'chat');
@@ -236,6 +238,7 @@ const startServer = async () => {
     mountRouter('/auth/password-reset', createPasswordResetRouter, 'passwordReset (legacy)');
     mountRouter('/delete-account', createDeleteAccountRouter, 'deleteAccount (legacy)');
     mountRouter('/premium', createPremiumRouter, 'premium (legacy)');
+    mountRouter('/analysis', createAnalysisRouter, 'analysis (legacy)');
     mountRouterInstance('/webhooks/revenuecat', revenuecatWebhookRouter, 'revenuecatWebhook (legacy)');
     if (createChatRouter) {
       mountRouter('/chat', createChatRouter, 'chat (legacy)');
