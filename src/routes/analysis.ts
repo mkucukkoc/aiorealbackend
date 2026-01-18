@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import axios from 'axios';
+import type { QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { authenticateToken, AuthRequest } from '../middleware/authMiddleware';
 import { db } from '../firebase';
 import { logger } from '../utils/logger';
@@ -58,6 +59,16 @@ const ANALYSIS_SCHEMA = {
     'probabilityBreakdown',
     'technicalSpecs',
   ],
+};
+
+type GeminiResponse = {
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{
+        text?: string;
+      }>;
+    };
+  }>;
 };
 
 const extractImageData = async (params: {
@@ -143,7 +154,7 @@ export function createAnalysisRouter(): Router {
         'Gemini request prepared'
       );
 
-      const geminiResponse = await axios.post(
+      const geminiResponse = await axios.post<GeminiResponse>(
         `${GEMINI_ENDPOINT}?key=${GEMINI_API_KEY}`,
         geminiPayload,
         { headers: { 'Content-Type': 'application/json' } }
@@ -220,7 +231,7 @@ export function createAnalysisRouter(): Router {
         .limit(limit)
         .get();
 
-      const items = snapshot.docs.map((doc) => doc.data());
+      const items = snapshot.docs.map((doc: QueryDocumentSnapshot) => doc.data());
 
       logger.info(
         { requestId, userId, count: items.length },
