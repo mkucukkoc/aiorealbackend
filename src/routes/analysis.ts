@@ -153,7 +153,10 @@ const uploadImageToStorage = async (params: {
     return signedUrl;
   } catch (error) {
     logger.warn({ requestId, userId, filePath, err: error }, 'Failed to get signed URL');
-    return `https://storage.googleapis.com/${bucket.name}/${filePath}`;
+    const bucketName = typeof (bucket as any).name === 'string'
+      ? (bucket as any).name
+      : process.env.FIREBASE_STORAGE_BUCKET;
+    return bucketName ? `https://storage.googleapis.com/${bucketName}/${filePath}` : null;
   }
 };
 
@@ -161,7 +164,8 @@ export function createAnalysisRouter(): Router {
   const r = Router();
 
   r.post('/forensic', authenticateToken, async (req, res) => {
-    const requestId = req.headers['x-request-id'] || undefined;
+    const requestIdHeader = req.headers['x-request-id'];
+    const requestId = Array.isArray(requestIdHeader) ? requestIdHeader[0] : requestIdHeader;
     const userId = (req as AuthRequest).user?.id;
     const { imageBase64, imageUrl, title, lastMessage } = req.body || {};
 
@@ -280,7 +284,8 @@ export function createAnalysisRouter(): Router {
   });
 
   r.get('/history', authenticateToken, async (req, res) => {
-    const requestId = req.headers['x-request-id'] || undefined;
+    const requestIdHeader = req.headers['x-request-id'];
+    const requestId = Array.isArray(requestIdHeader) ? requestIdHeader[0] : requestIdHeader;
     const userId = (req as AuthRequest).user?.id;
     const limit = Math.min(Number(req.query.limit || 50), 100);
 
