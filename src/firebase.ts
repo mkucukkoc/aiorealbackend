@@ -28,6 +28,7 @@ if (!firebaseAdmin.apps.length) {
           serviceAccount: serviceAccountMeta,
           hasDatabaseUrl: Boolean(process.env.FIREBASE_DATABASE_URL),
           storageBucket,
+          appProjectId: firebaseAdmin.app().options?.projectId,
         },
         'Firebase Admin SDK initialized with service account'
       );
@@ -35,7 +36,10 @@ if (!firebaseAdmin.apps.length) {
       // Fallback to default credentials (for local development)
       firebaseAdmin.initializeApp({ storageBucket });
       logger.info(
-        { storageBucket },
+        {
+          storageBucket,
+          appProjectId: firebaseAdmin.app().options?.projectId,
+        },
         'Firebase Admin SDK initialized with default credentials'
       );
     }
