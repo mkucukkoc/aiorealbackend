@@ -2,7 +2,7 @@ import { Router } from 'express';
 import axios from 'axios';
 import type { QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { authenticateToken, AuthRequest } from '../middleware/authMiddleware';
-import { db } from '../firebase';
+import { db, storage } from '../firebase';
 import { logger } from '../utils/logger';
 import { ResponseBuilder } from '../types/response';
 
@@ -76,11 +76,19 @@ const extractImageData = async (params: {
   imageUrl?: string;
 }) => {
   if (params.imageBase64) {
-    const stripped = params.imageBase64.startsWith('data:')
-      ? params.imageBase64.split(',')[1] || ''
-      : params.imageBase64;
+    let mimeType = 'image/jpeg';
+    let stripped = params.imageBase64;
+    if (params.imageBase64.startsWith('data:')) {
+      const [meta, data] = params.imageBase64.split(',');
+      const match = meta?.match(/^data:(.+);base64$/i);
+      mimeType = match?.[1] || 'image/jpeg';
+      stripped = data || '';
+    }
+    if (!stripped) {
+      throw new Error('imageBase64 is empty');
+    }
     return {
-      mimeType: 'image/jpeg',
+      mimeType,
       data: stripped,
     };
   }
@@ -95,6 +103,58 @@ const extractImageData = async (params: {
   }
 
   throw new Error('imageBase64 or imageUrl is required');
+};
+
+const getImageExtension = (mimeType: string) => {
+  switch (mimeType) {
+    case 'image/png':
+      return 'png';
+    case 'image/webp':
+      return 'webp';
+    case 'image/gif':
+      return 'gif';
+    case 'image/jpeg':
+    case 'image/jpg':
+      return 'jpg';
+    default:
+      return 'bin';
+  }
+};
+
+const uploadImageToStorage = async (params: {
+  requestId?: string;
+  userId: string;
+  analysisId: string;
+  inlineData: { mimeType: string; data: string };
+}) => {
+  const { requestId, userId, analysisId, inlineData } = params;
+  const bucket = storage.bucket();
+  const extension = getImageExtension(inlineData.mimeType);
+  const filePath = `forensic/${userId}/${analysisId}.${extension}`;
+  const file = bucket.file(filePath) as any;
+
+  if (typeof file.save !== 'function') {
+    logger.warn({ requestId, userId, filePath }, 'Storage file.save is unavailable');
+    return null;
+  }
+
+  const buffer = Buffer.from(inlineData.data, 'base64');
+  await file.save(buffer, {
+    contentType: inlineData.mimeType,
+    resumable: false,
+    metadata: { contentType: inlineData.mimeType },
+  });
+
+  try {
+    const [signedUrl] = await file.getSignedUrl({
+      action: 'read',
+      expires: '01-01-2100',
+    });
+    return signedUrl;
+  } catch (error) {
+    logger.warn({ requestId, userId, filePath, err: error }, 'Failed to get signed URL');
+    return `https://storage.googleapis.com/${bucket.name}/${filePath}`;
+  }
 };
 
 export function createAnalysisRouter(): Router {
@@ -130,6 +190,7 @@ export function createAnalysisRouter(): Router {
       );
 
       const inlineData = await extractImageData({ imageBase64, imageUrl });
+      const analysisRef = db.collection('users').doc(userId).collection('analyze1').doc();
 
       const geminiPayload = {
         contents: [
@@ -169,12 +230,19 @@ export function createAnalysisRouter(): Router {
         'Gemini analysis completed'
       );
 
+      const storedImageUrl = await uploadImageToStorage({
+        requestId,
+        userId,
+        analysisId: analysisRef.id,
+        inlineData,
+      });
+
       const now = new Date();
-      const analysisRef = db.collection('users').doc(userId).collection('analyze1').doc();
       const analysisDoc = {
         analysisId: analysisRef.id,
         userId,
-        imageUrl: imageUrl || (imageBase64 ? `data:image/jpeg;base64,${inlineData.data}` : null),
+        imageUrl: storedImageUrl || null,
+        sourceImageUrl: typeof imageUrl === 'string' ? imageUrl : null,
         result: parsedResult,
         createdAt: now,
         updatedAt: now,
