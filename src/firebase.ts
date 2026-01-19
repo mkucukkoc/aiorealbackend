@@ -95,11 +95,15 @@ if (!firebaseAdmin.apps.length) {
 
     const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || 'aveniaapp.firebasestorage.app';
 
+    const explicitProjectId =
+      serviceAccount?.project_id || process.env.FIREBASE_PROJECT_ID || undefined;
+
     if (serviceAccount) {
       firebaseAdmin.initializeApp({
         credential: firebaseAdmin.credential.cert(serviceAccount),
         databaseURL: process.env.FIREBASE_DATABASE_URL,
         storageBucket,
+        projectId: explicitProjectId,
       });
       logger.info(
         {
@@ -112,7 +116,10 @@ if (!firebaseAdmin.apps.length) {
       );
     } else {
       // Fallback to default credentials (for local development)
-      firebaseAdmin.initializeApp({ storageBucket });
+      firebaseAdmin.initializeApp({
+        storageBucket,
+        projectId: explicitProjectId,
+      });
       logger.info(
         {
           storageBucket,
