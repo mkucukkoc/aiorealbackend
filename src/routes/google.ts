@@ -94,24 +94,31 @@ export function createGoogleAuthRouter(): Router {
     authRateLimits.general,
     async (req, res) => {
       const { code, state } = req.query;
+      const requestId = uuidv4();
       const ipAddress = (req as any).ip || (req as any).connection?.remoteAddress;
       const userAgent = (req as any).get('User-Agent');
       logger.info(
-        { code, state, ipAddress, userAgent },
+        { requestId, codePresent: Boolean(code), state, ipAddress, userAgent },
         '[GoogleAuth] /callback request payload'
       );
 
       if (typeof code !== 'string' || typeof state !== 'string') {
-        logger.warn('[GoogleAuth] /callback received invalid query parameters');
+        logger.warn({ requestId }, '[GoogleAuth] /callback received invalid query parameters');
         return res.status(400).send('Invalid request');
       }
 
+      logger.info({ requestId, step: 'redis_get', state }, '[GoogleAuth] callback flow step');
       const session = await getJson<any>(`gls:${state}`);
+      logger.debug(
+        { requestId, step: 'redis_get_result', hasSession: Boolean(session), hasDeviceId: Boolean(session?.device_id) },
+        '[GoogleAuth] callback flow step'
+      );
       if (!session || !session.device_id) {
-        logger.warn({ state }, '[GoogleAuth] Invalid or missing state session');
+        logger.warn({ requestId, state }, '[GoogleAuth] Invalid or missing state session');
         return res.status(400).send('Invalid state');
       }
       try {
+        logger.info({ requestId, step: 'exchange_code_for_token' }, '[GoogleAuth] callback flow step');
         const tokenResp = await axios.post(
           'https://oauth2.googleapis.com/token',
           new URLSearchParams({
@@ -124,10 +131,24 @@ export function createGoogleAuthRouter(): Router {
           { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
         );
         const { access_token } = (tokenResp.data as any);
+        logger.info(
+          { requestId, step: 'token_exchange_ok', hasAccessToken: Boolean(access_token) },
+          '[GoogleAuth] callback flow step'
+        );
+        logger.info({ requestId, step: 'fetch_userinfo' }, '[GoogleAuth] callback flow step');
         const userResp = await axios.get(
           `https://www.googleapis.com/oauth2/v2/userinfo?access_token=${access_token}`
         );
         const payload = userResp.data as any;
+        logger.debug(
+          {
+            requestId,
+            step: 'userinfo_received',
+            emailPresent: Boolean(payload?.email),
+            emailVerified: Boolean(payload?.email_verified),
+          },
+          '[GoogleAuth] callback flow step'
+        );
         const email = payload?.email;
         const emailVerified = payload?.email_verified;
         if (!email) return res.status(400).send('No email');
@@ -136,8 +157,13 @@ export function createGoogleAuthRouter(): Router {
         const userAgent = (req as any).get('User-Agent');
 
         // Check if user exists in our new auth system
+        logger.info({ requestId, step: 'find_user_by_email', email }, '[GoogleAuth] callback flow step');
         let user = await UserService.findByEmail(email);
         let wasSoftDeleted = false;
+        logger.info(
+          { requestId, step: 'find_user_by_email_done', found: Boolean(user) },
+          '[GoogleAuth] callback flow step'
+        );
         
         if (user && (user.provider === 'password' || (user.passwordHash && user.passwordHash.length > 0))) {
           const errorMessage = 'Bu e-posta şifreyle kayıtlı. Lütfen e-posta ve şifrenizle giriş yapın.';
@@ -156,7 +182,7 @@ export function createGoogleAuthRouter(): Router {
             deviceId: session.device_id,
           }, 600);
 
-          logger.info({ email, state }, '[GoogleAuth] Password account exists - redirecting to app');
+          logger.info({ requestId, email, state }, '[GoogleAuth] Password account exists - redirecting to app');
           const appRedirect = config.app?.redirectUri || 'avenia://auth';
           const redirectUrl = `${appRedirect}?state=${encodeURIComponent(state)}&error=password_account_exists`;
           return res.redirect(redirectUrl);
@@ -164,12 +190,14 @@ export function createGoogleAuthRouter(): Router {
 
         if (!user) {
           // Create new Google user in our auth system (this already handles Firebase Auth + subsc)
+          logger.info({ requestId, step: 'create_google_user' }, '[GoogleAuth] callback flow step');
           user = await UserService.createGoogleUser(
             email,
             payload?.name || payload?.given_name || ''
           );
           
           logger.info('Google user created successfully via callback', {
+            requestId,
             userId: user.id,
             email: user.email,
             operation: 'google_oauth_callback'
@@ -181,6 +209,10 @@ export function createGoogleAuthRouter(): Router {
           }
           if ((existingUser as any).isDeleted || (existingUser as any).is_deleted) {
             wasSoftDeleted = true;
+            logger.info(
+              { requestId, step: 'restore_soft_deleted_user', userId: existingUser.id },
+              '[GoogleAuth] callback flow step'
+            );
             await restoreSoftDeletedUser(existingUser.id);
             user = {
               ...existingUser,
@@ -194,6 +226,10 @@ export function createGoogleAuthRouter(): Router {
           }
 
           // Update last login for existing user
+          logger.info(
+            { requestId, step: 'update_user_last_login', userId: existingUser.id },
+            '[GoogleAuth] callback flow step'
+          );
           await UserService.updateUser(existingUser.id, {
             lastLoginAt: new Date(),
             ...(existingUser.provider !== 'google' ? { provider: 'google' } : {}),
@@ -201,12 +237,19 @@ export function createGoogleAuthRouter(): Router {
 
           // Also update Firebase Auth user if needed
           try {
+            logger.info(
+              { requestId, step: 'update_firebase_auth_user', userId: existingUser.id },
+              '[GoogleAuth] callback flow step'
+            );
             await admin.auth().updateUser(existingUser.id, {
               displayName: payload?.name || payload?.given_name || existingUser.name,
               emailVerified: true,
             });
           } catch (error) {
-            logger.warn('Failed to update Firebase Auth user via callback', { error, userId: existingUser.id });
+            logger.warn(
+              { requestId, error, userId: existingUser.id },
+              'Failed to update Firebase Auth user via callback'
+            );
           }
         }
 
@@ -231,6 +274,10 @@ export function createGoogleAuthRouter(): Router {
           ipAddress,
           userAgent
         );
+        logger.info(
+          { requestId, step: 'session_created', userId: ensuredUser.id, sessionId: newSession.id },
+          '[GoogleAuth] callback flow step'
+        );
 
         // Log successful Google auth
         await auditService.logAuthEvent('login', {
@@ -243,7 +290,10 @@ export function createGoogleAuthRouter(): Router {
         });
 
         if (wasSoftDeleted) {
-          logger.info({ userId: ensuredUser.id }, 'Soft-deleted Google user reactivated via callback, cleaning artifacts');
+          logger.info(
+            { requestId, userId: ensuredUser.id },
+            'Soft-deleted Google user reactivated via callback, cleaning artifacts'
+          );
           await cleanupDeletedAccountArtifacts(ensuredUser.id);
           await ensureFirebaseAuthUserProfile(ensuredUser.id, {
             email: ensuredUser.email,
@@ -253,16 +303,19 @@ export function createGoogleAuthRouter(): Router {
 
         let firebaseCustomToken: string | undefined;
         try {
+          logger.info(
+            { requestId, step: 'create_firebase_custom_token', userId: ensuredUser.id },
+            '[GoogleAuth] callback flow step'
+          );
           firebaseCustomToken = await admin.auth().createCustomToken(ensuredUser.id, {
             email: ensuredUser.email,
             provider: 'google',
           });
         } catch (error) {
-          logger.warn('Failed to create Firebase custom token for Google user', {
-            error,
-            userId: ensuredUser.id,
-            operation: 'google_custom_token',
-          });
+          logger.warn(
+            { requestId, error, userId: ensuredUser.id, operation: 'google_custom_token' },
+            'Failed to create Firebase custom token for Google user'
+          );
         }
         
         const readyPayload = {
@@ -280,10 +333,12 @@ export function createGoogleAuthRouter(): Router {
           firebaseCustomToken,
           firebase_token: firebaseCustomToken ?? null,
         };
+        logger.info({ requestId, step: 'persist_ready_payload', state }, '[GoogleAuth] callback flow step');
         await setJson(`gls:${state}`, readyPayload, 600);
-        logger.debug({ state, readyPayload }, '[GoogleAuth] /callback response payload');
+        logger.debug({ requestId, state, readyPayload }, '[GoogleAuth] /callback response payload');
 
         logger.info({
+          requestId,
           userId: user.id,
           state,
           redirectUriConfigured: config.google.redirectUri,
@@ -294,7 +349,7 @@ export function createGoogleAuthRouter(): Router {
         const redirectUrl = `${appRedirect}?state=${encodeURIComponent(state)}&success=1`;
         return res.redirect(redirectUrl);
       } catch (error) {
-        logger.error({ err: error, operation: 'googleAuth' }, 'Google auth error');
+        logger.error({ requestId, err: error, operation: 'googleAuth' }, 'Google auth error');
         
         // Log the error for debugging
         await auditService.logAuthEvent('login', {
