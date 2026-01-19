@@ -191,11 +191,30 @@ export class UserService {
    */
   static async findByEmail(email: string): Promise<User | null> {
     const normalizedEmail = email.toLowerCase().trim();
-    const snapshot = await db
-      .collection('subsc')
-      .where('email', '==', normalizedEmail)
-      .limit(1)
-      .get();
+    let snapshot;
+    try {
+      snapshot = await db
+        .collection('subsc')
+        .where('email', '==', normalizedEmail)
+        .limit(1)
+        .get();
+    } catch (error) {
+      logger.error(
+        {
+          err: error,
+          operation: 'findByEmail',
+          email: normalizedEmail,
+          firebaseEnv: {
+            projectId: process.env.FIREBASE_PROJECT_ID,
+            hasServiceAccountKey: Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_KEY),
+            hasDatabaseUrl: Boolean(process.env.FIREBASE_DATABASE_URL),
+            storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+          },
+        },
+        'Firestore query failed'
+      );
+      throw error;
+    }
 
     if (snapshot.empty) {
       return null;
