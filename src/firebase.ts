@@ -43,6 +43,21 @@ if (!firebaseAdmin.apps.length) {
         'Firebase Admin SDK initialized with default credentials'
       );
     }
+
+    if (process.env.FIRESTORE_DEBUG_LIST === '1') {
+      void (async () => {
+        try {
+          const db = firebaseAdmin.firestore();
+          const collections = await db.listCollections();
+          logger.info(
+            { collections: collections.map((c) => c.id) },
+            'Firestore ok, collections listed'
+          );
+        } catch (error) {
+          logger.error({ err: error }, 'Firestore listCollections failed');
+        }
+      })();
+    }
   } catch (error) {
     logger.error('Failed to initialize Firebase Admin SDK:', error);
     logger.warn('Falling back to mock Firebase for development');
