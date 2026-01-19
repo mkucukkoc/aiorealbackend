@@ -1,83 +1,5 @@
 import { logger } from './utils/logger';
 import * as firebaseAdmin from 'firebase-admin';
-import { GoogleAuth } from 'google-auth-library';
-
-function safeEmail(email?: string | null): string | null {
-  if (!email) {
-    return null;
-  }
-  const [user, domain] = email.split('@');
-  if (!domain) {
-    return null;
-  }
-  return `${(user || '').slice(0, 3)}***@${domain}`;
-}
-
-function getProjectHintFromEnv() {
-  return {
-    GCLOUD_PROJECT: process.env.GCLOUD_PROJECT || null,
-    GOOGLE_CLOUD_PROJECT: process.env.GOOGLE_CLOUD_PROJECT || null,
-    FIRESTORE_EMULATOR_HOST: process.env.FIRESTORE_EMULATOR_HOST || null,
-    FIREBASE_CONFIG: process.env.FIREBASE_CONFIG ? '[set]' : null,
-  };
-}
-
-async function logFirestoreDiagnostics() {
-  try {
-    const db = firebaseAdmin.firestore();
-    const app = firebaseAdmin.app();
-    const options = app.options || {};
-    const auth = new GoogleAuth({
-      scopes: ['https://www.googleapis.com/auth/cloud-platform'],
-    });
-
-    const projectId = await auth.getProjectId().catch(() => null);
-    const client = await auth.getClient().catch(() => null);
-    let clientEmail: string | null = null;
-    try {
-      clientEmail = (client as any)?.email || (client as any)?.client_email || null;
-    } catch {
-      clientEmail = null;
-    }
-
-    logger.info(
-      {
-        firebase: {
-          appProjectId: options.projectId || null,
-          databaseURL: options.databaseURL ? '[set]' : null,
-          storageBucket: options.storageBucket || null,
-        },
-        adc: {
-          projectId,
-          clientEmail: safeEmail(clientEmail),
-          credType: (client as any)?.constructor?.name || null,
-        },
-        envHints: getProjectHintFromEnv(),
-      },
-      'Firestore diagnostics'
-    );
-
-    const collections = await db.listCollections();
-    logger.info(
-      {
-        count: collections.length,
-        names: collections.slice(0, 10).map((c) => c.id),
-      },
-      'Firestore listCollections OK'
-    );
-  } catch (error: any) {
-    logger.error(
-      {
-        code: error?.code,
-        message: error?.message,
-        details: error?.details,
-        metadata: error?.metadata,
-        envHints: getProjectHintFromEnv(),
-      },
-      'Firestore diagnostics FAILED'
-    );
-  }
-}
 
 // Initialize Firebase Admin SDK
 if (!firebaseAdmin.apps.length) {
@@ -95,15 +17,11 @@ if (!firebaseAdmin.apps.length) {
 
     const storageBucket = process.env.FIREBASE_STORAGE_BUCKET || 'aveniaapp.firebasestorage.app';
 
-    const explicitProjectId =
-      serviceAccount?.project_id || process.env.FIREBASE_PROJECT_ID || undefined;
-
     if (serviceAccount) {
       firebaseAdmin.initializeApp({
         credential: firebaseAdmin.credential.cert(serviceAccount),
         databaseURL: process.env.FIREBASE_DATABASE_URL,
         storageBucket,
-        projectId: explicitProjectId,
       });
       logger.info(
         {
@@ -116,10 +34,7 @@ if (!firebaseAdmin.apps.length) {
       );
     } else {
       // Fallback to default credentials (for local development)
-      firebaseAdmin.initializeApp({
-        storageBucket,
-        projectId: explicitProjectId,
-      });
+      firebaseAdmin.initializeApp({ storageBucket });
       logger.info(
         {
           storageBucket,
@@ -129,8 +44,19 @@ if (!firebaseAdmin.apps.length) {
       );
     }
 
-    if (process.env.FIRESTORE_DIAGNOSTICS === '1') {
-      void logFirestoreDiagnostics();
+    if (process.env.FIRESTORE_DEBUG_LIST === '1') {
+      void (async () => {
+        try {
+          const db = firebaseAdmin.firestore();
+          const collections = await db.listCollections();
+          logger.info(
+            { collections: collections.map((c) => c.id) },
+            'Firestore ok, collections listed'
+          );
+        } catch (error) {
+          logger.error({ err: error }, 'Firestore listCollections failed');
+        }
+      })();
     }
   } catch (error) {
     logger.error('Failed to initialize Firebase Admin SDK:', error);
