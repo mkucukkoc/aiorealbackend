@@ -605,7 +605,13 @@ class DeleteAccountService {
   }
 
   private async cleanupStorageData(userId: string): Promise<number> {
-    const prefixes = [`uploads/${userId}`, `history/${userId}`, `profileImages/${userId}`, `tempFiles/${userId}`];
+    const prefixes = [
+      `uploads/${userId}`,
+      `history/${userId}`,
+      `profileImages/${userId}`,
+      `tempFiles/${userId}`,
+      `forensic/${userId}`,
+    ];
     const bucket = storage.bucket();
     let deleted = 0;
 
