@@ -2,6 +2,7 @@ import { Router } from 'express';
 import axios from 'axios';
 import type { QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { authenticateToken, AuthRequest } from '../middleware/authMiddleware';
+import { authRateLimits } from '../middleware/rateLimitMiddleware';
 import { db, storage } from '../firebase';
 import { logger } from '../utils/logger';
 import { ResponseBuilder } from '../types/response';
@@ -150,14 +151,41 @@ const uploadImageToStorage = async (params: {
       action: 'read',
       expires: '01-01-2100',
     });
-    return signedUrl;
+    return { url: signedUrl, path: filePath };
   } catch (error) {
     logger.warn({ requestId, userId, filePath, err: error }, 'Failed to get signed URL');
     const bucketName = typeof (bucket as any).name === 'string'
       ? (bucket as any).name
       : process.env.FIREBASE_STORAGE_BUCKET;
-    return bucketName ? `https://storage.googleapis.com/${bucketName}/${filePath}` : null;
+    return bucketName ? { url: `https://storage.googleapis.com/${bucketName}/${filePath}`, path: filePath } : null;
   }
+};
+
+const resolveStoragePath = (data: { storagePath?: string; imageUrl?: string } | null | undefined) => {
+  if (!data) return null;
+  if (data.storagePath && data.storagePath.trim().length > 0) {
+    return data.storagePath.trim();
+  }
+  const url = data.imageUrl;
+  if (!url || typeof url !== 'string') return null;
+  if (url.startsWith('gs://')) {
+    const parts = url.replace('gs://', '').split('/');
+    parts.shift();
+    return parts.join('/');
+  }
+  if (url.includes('storage.googleapis.com/')) {
+    const [, afterHost] = url.split('storage.googleapis.com/');
+    if (!afterHost) return null;
+    const [, ...pathParts] = afterHost.split('/');
+    return pathParts.join('/');
+  }
+  if (url.includes('/o/')) {
+    const match = url.match(/\/o\/([^?]+)/);
+    if (match?.[1]) {
+      return decodeURIComponent(match[1]);
+    }
+  }
+  return null;
 };
 
 export function createAnalysisRouter(): Router {
@@ -234,7 +262,7 @@ export function createAnalysisRouter(): Router {
         'Gemini analysis completed'
       );
 
-      const storedImageUrl = await uploadImageToStorage({
+      const storedImage = await uploadImageToStorage({
         requestId,
         userId,
         analysisId: analysisRef.id,
@@ -245,7 +273,8 @@ export function createAnalysisRouter(): Router {
       const analysisDoc = {
         analysisId: analysisRef.id,
         userId,
-        imageUrl: storedImageUrl || null,
+        imageUrl: storedImage?.url || null,
+        storagePath: storedImage?.path || null,
         sourceImageUrl: typeof imageUrl === 'string' ? imageUrl : null,
         result: parsedResult,
         createdAt: now,
@@ -322,6 +351,61 @@ export function createAnalysisRouter(): Router {
         .json(ResponseBuilder.error('history_failed', 'Failed to load history'));
     }
   });
+
+  r.delete(
+    '/history/:id',
+    authRateLimits.general,
+    authenticateToken,
+    async (req, res) => {
+      const userId = (req as AuthRequest).user?.id;
+      const { id } = req.params;
+
+      if (!userId) {
+        return res.status(401).json(
+          ResponseBuilder.error('unauthorized', 'Authentication required')
+        );
+      }
+      if (!id) {
+        return res.status(400).json(
+          ResponseBuilder.error('invalid_request', 'History id is required')
+        );
+      }
+
+      try {
+        const docRef = db.collection('users').doc(userId).collection('analyze1').doc(id);
+        const docSnap = await docRef.get();
+        if (!docSnap.exists) {
+          return res.status(404).json(
+            ResponseBuilder.error('NOT_FOUND', 'History item not found')
+          );
+        }
+        const data = docSnap.data() as { userId?: string; storagePath?: string; imageUrl?: string } | undefined;
+        if (data?.userId && data.userId !== userId) {
+          return res.status(404).json(
+            ResponseBuilder.error('NOT_FOUND', 'History item not found')
+          );
+        }
+
+        await docRef.delete();
+
+        const storagePath = resolveStoragePath(data);
+        if (storagePath) {
+          try {
+            await storage.bucket().file(storagePath).delete();
+          } catch (error) {
+            logger.warn({ err: error, storagePath, userId }, 'Failed to delete analysis storage object');
+          }
+        }
+
+        return res.json(ResponseBuilder.success({ id, deleted: true }));
+      } catch (error) {
+        logger.error({ err: error, historyId: id }, 'Failed to delete history item');
+        return res
+          .status(500)
+          .json(ResponseBuilder.error('DELETE_FAILED', 'History item could not be deleted'));
+      }
+    }
+  );
 
   return r;
 }
