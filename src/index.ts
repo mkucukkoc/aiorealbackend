@@ -299,16 +299,16 @@ const startServer = async () => {
       }
     }, 60 * 60 * 1000); // 1 hour
 
-    // Data retention cleanup (run daily at 3 AM)
-    setInterval(async () => {
-      try {
-        const results = await dataRetentionService.runRetentionPolicies();
-        const totalDeleted = results.reduce((sum, result) => sum + result.deletedCount, 0);
-        logger.info(`Data retention cleanup completed: ${totalDeleted} documents deleted`);
-      } catch (error) {
-        logger.error('Data retention cleanup failed:', error);
-      }
-    }, 24 * 60 * 60 * 1000); // 24 hours
+    // Data retention cleanup (disabled for now)
+    // setInterval(async () => {
+    //   try {
+    //     const results = await dataRetentionService.runRetentionPolicies();
+    //     const totalDeleted = results.reduce((sum, result) => sum + result.deletedCount, 0);
+    //     logger.info(`Data retention cleanup completed: ${totalDeleted} documents deleted`);
+    //   } catch (error) {
+    //     logger.error('Data retention cleanup failed:', error);
+    //   }
+    // }, 24 * 60 * 60 * 1000); // 24 hours
 
     // Backup tasks (run daily at 2 AM)
     setInterval(async () => {
