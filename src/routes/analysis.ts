@@ -130,7 +130,8 @@ const uploadImageToStorage = async (params: {
 }) => {
   const { requestId, userId, analysisId, inlineData } = params;
   const bucket = storage.bucket();
-  const filePath = `forensic/${userId}/${analysisId}`;
+  const extension = getImageExtension(inlineData.mimeType);
+  const filePath = `forensic/${userId}/${analysisId}.${extension}`;
   const file = bucket.file(filePath) as any;
 
   if (typeof file.save !== 'function') {
@@ -160,31 +161,47 @@ const uploadImageToStorage = async (params: {
   }
 };
 
-const resolveStoragePath = (data: { storagePath?: string; imageUrl?: string } | null | undefined) => {
-  if (!data) return null;
-  if (data.storagePath && data.storagePath.trim().length > 0) {
-    return data.storagePath.trim();
-  }
-  const url = data.imageUrl;
-  if (!url || typeof url !== 'string') return null;
-  if (url.startsWith('gs://')) {
-    const parts = url.replace('gs://', '').split('/');
+const normalizeStoragePath = (value?: string | null) => {
+  if (!value || typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.startsWith('gs://')) {
+    const parts = trimmed.replace('gs://', '').split('/');
     parts.shift();
     return parts.join('/');
   }
-  if (url.includes('storage.googleapis.com/')) {
-    const [, afterHost] = url.split('storage.googleapis.com/');
-    if (!afterHost) return null;
-    const [, ...pathParts] = afterHost.split('/');
-    return pathParts.join('/');
-  }
-  if (url.includes('/o/')) {
-    const match = url.match(/\/o\/([^?]+)/);
-    if (match?.[1]) {
-      return decodeURIComponent(match[1]);
+
+  if (trimmed.includes('?')) {
+    const [beforeQuery] = trimmed.split('?');
+    if (beforeQuery) {
+      return normalizeStoragePath(beforeQuery);
     }
   }
-  return null;
+
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    try {
+      const parsed = new URL(trimmed);
+      if (parsed.hostname.endsWith('storage.googleapis.com')) {
+        const parts = parsed.pathname.split('/').filter(Boolean);
+        return parts.length > 1 ? parts.slice(1).join('/') : null;
+      }
+      const match = parsed.pathname.match(/\/o\/(.+)$/);
+      if (match?.[1]) {
+        return decodeURIComponent(match[1]);
+      }
+      return parsed.pathname.startsWith('/') ? parsed.pathname.slice(1) : parsed.pathname;
+    } catch {
+      return null;
+    }
+  }
+
+  return trimmed;
+};
+
+const resolveStoragePath = (data: { storagePath?: string; imageUrl?: string } | null | undefined) => {
+  if (!data) return null;
+  return normalizeStoragePath(data.storagePath) || normalizeStoragePath(data.imageUrl);
 };
 
 export function createAnalysisRouter(): Router {
@@ -387,10 +404,34 @@ export function createAnalysisRouter(): Router {
 
         const storagePath = resolveStoragePath(data);
         if (storagePath) {
-          try {
-            await storage.bucket().file(storagePath).delete();
-          } catch (error) {
-            logger.warn({ err: error, storagePath, userId }, 'Failed to delete analysis storage object');
+          const candidatePaths = new Set<string>();
+          candidatePaths.add(storagePath);
+          if (/\.[^/.]+$/.test(storagePath)) {
+            candidatePaths.add(storagePath.replace(/\.[^/.]+$/, ''));
+          } else {
+            ['jpg', 'jpeg', 'png', 'webp'].forEach((ext) => {
+              candidatePaths.add(`${storagePath}.${ext}`);
+            });
+          }
+
+          let deleted = false;
+          for (const path of candidatePaths) {
+            try {
+              await storage.bucket().file(path).delete();
+              deleted = true;
+              break;
+            } catch (error: any) {
+              const code = error?.code;
+              const reason = error?.errors?.[0]?.reason;
+              if (code === 404 || reason === 'notFound') {
+                continue;
+              }
+              logger.warn({ err: error, storagePath: path, userId }, 'Failed to delete analysis storage object');
+              break;
+            }
+          }
+          if (!deleted) {
+            logger.warn({ storagePath, userId }, 'Analysis storage object not found');
           }
         }
 
