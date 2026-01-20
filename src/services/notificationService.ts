@@ -103,7 +103,7 @@ class NotificationService {
     const html = this.render(startedTemplate, replacements);
 
     const tasks = [
-      this.dispatchEmail(user.email || '', 'Account deletion started', html),
+      this.dispatchEmail(user.email || '', 'Ai or Real - Account deletion started', html),
       this.dispatchPush(user, {
         title: 'Hesap silme süreci başladı',
         body: 'Hesabınız için silme işlemi başlatıldı. Detaylar e-postanıza gönderildi.',
@@ -127,7 +127,7 @@ class NotificationService {
     const html = this.render(completedTemplate, replacements);
 
     const tasks = [
-      this.dispatchEmail(user.email || '', 'Account deleted', html),
+      this.dispatchEmail(user.email || '', 'Ai or Real - Account deleted', html),
       this.dispatchPush(user, {
         title: 'Hesabınız silindi',
         body: 'Hesabınızın silme işlemi tamamlandı.',
