@@ -130,8 +130,7 @@ const uploadImageToStorage = async (params: {
 }) => {
   const { requestId, userId, analysisId, inlineData } = params;
   const bucket = storage.bucket();
-  const extension = getImageExtension(inlineData.mimeType);
-  const filePath = `forensic/${userId}/${analysisId}.${extension}`;
+  const filePath = `forensic/${userId}/${analysisId}`;
   const file = bucket.file(filePath) as any;
 
   if (typeof file.save !== 'function') {
@@ -386,8 +385,6 @@ export function createAnalysisRouter(): Router {
           );
         }
 
-        await docRef.delete();
-
         const storagePath = resolveStoragePath(data);
         if (storagePath) {
           try {
@@ -396,6 +393,8 @@ export function createAnalysisRouter(): Router {
             logger.warn({ err: error, storagePath, userId }, 'Failed to delete analysis storage object');
           }
         }
+
+        await docRef.delete();
 
         return res.json(ResponseBuilder.success({ id, deleted: true }));
       } catch (error) {
