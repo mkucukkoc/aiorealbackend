@@ -47,6 +47,10 @@ const normalizePlanId = (value: string) => value.toLowerCase().trim();
 export const resolvePlanId = (candidate: string | null | undefined) => {
   if (!candidate) return null;
   const normalized = normalizePlanId(candidate);
+  if (normalized.includes('base-monthly')) return 'premium_base_monthly';
+  if (normalized.includes('base-yearly') || normalized.includes('base-annual')) return 'premium_base_yearly';
+  if (normalized.includes('pro-monthly')) return 'premium_pro_monthly';
+  if (normalized.includes('pro-yearly') || normalized.includes('pro-annual')) return 'premium_pro_yearly';
   if (PLAN_QUOTAS[normalized]) {
     return normalized;
   }

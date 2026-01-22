@@ -10,6 +10,30 @@ if (!admin.apps.length) {
 }
 
 const WEBHOOK_SECRET = (process.env.REVENUECAT_WEBHOOK_SECRET || '').trim();
+const REVENUECAT_ENTITLEMENT_IDS = (process.env.REVENUECAT_ENTITLEMENT_ID ||
+  'pro_plan_entitlement,base_plan_entitlement')
+  .split(',')
+  .map((value) => value.trim())
+  .filter((value) => value.length > 0);
+
+const selectEntitlement = (entitlements: Record<string, any> | null | undefined) => {
+  if (!entitlements) return null;
+  for (const key of REVENUECAT_ENTITLEMENT_IDS) {
+    const entitlement = entitlements[key];
+    if (!entitlement) continue;
+    const isActive = entitlement?.is_active === true || entitlement?.isActive === true;
+    if (isActive) {
+      return { key, entitlement };
+    }
+  }
+  for (const key of REVENUECAT_ENTITLEMENT_IDS) {
+    const entitlement = entitlements[key];
+    if (entitlement) {
+      return { key, entitlement };
+    }
+  }
+  return null;
+};
 
 type PremiumStatus = 'monthly' | 'annual' | 'lifetime' | 'unknown' | null;
 type PremiumStore = 'google_play' | 'app_store' | 'stripe' | 'unknown';
@@ -412,7 +436,8 @@ export const revenuecatWebhookHandler = async (req: Request, res: Response): Pro
       return;
     }
 
-    let entitlement = subscriber?.entitlements?.premium ?? null;
+    const entitlementSelection = selectEntitlement(subscriber?.entitlements);
+    let entitlement = entitlementSelection?.entitlement ?? null;
     if (!entitlement && eventTypeName === 'TEST' && webhookEvent?.product_id) {
       entitlement = {
         product_identifier: webhookEvent.product_id,
@@ -478,7 +503,7 @@ export const revenuecatWebhookHandler = async (req: Request, res: Response): Pro
         billingRecoveredAt: existingData?.billingRecoveredAt ?? null,
         store,
         productId: productIdentifier ?? existingData?.productId ?? null,
-        entitlementId: entitlement ? 'premium' : existingData?.entitlementId ?? null,
+        entitlementId: entitlementSelection?.key ?? existingData?.entitlementId ?? null,
         transactionId: transactionId ?? existingData?.transactionId ?? null,
         originalTransactionId: originalTransactionId ?? existingData?.originalTransactionId ?? null,
         transactionIdHash: hashValue(transactionId) ?? existingData?.transactionIdHash ?? null,

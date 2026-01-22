@@ -10,7 +10,28 @@ const CLIENT_SNAPSHOT_COLLECTION = 'premium_client_snapshots';
 const PREMIUM_DECISION_LOG_COLLECTION = 'premium_decision_logs';
 const USERS_COLLECTION = 'users';
 const SUBSC_COLLECTION = 'subsc';
-const REVENUECAT_ENTITLEMENT_ID = process.env.REVENUECAT_ENTITLEMENT_ID || 'premium';
+const REVENUECAT_ENTITLEMENT_IDS = (process.env.REVENUECAT_ENTITLEMENT_ID ||
+  'pro_plan_entitlement,base_plan_entitlement')
+  .split(',')
+  .map((value) => value.trim())
+  .filter((value) => value.length > 0);
+const selectEntitlement = (entitlements: Record<string, any>) => {
+  for (const key of REVENUECAT_ENTITLEMENT_IDS) {
+    const entitlement = entitlements?.[key];
+    if (!entitlement) continue;
+    const isActive = entitlement?.is_active === true || entitlement?.isActive === true;
+    if (isActive) {
+      return { key, entitlement };
+    }
+  }
+  for (const key of REVENUECAT_ENTITLEMENT_IDS) {
+    const entitlement = entitlements?.[key];
+    if (entitlement) {
+      return { key, entitlement };
+    }
+  }
+  return null;
+};
 
 type PremiumStatus = 'monthly' | 'annual' | null;
 
@@ -139,7 +160,7 @@ class PremiumService {
         hasEntitlements: entitlementKeys.length > 0,
         entitlementKeys,
         subscriptionKeys,
-        lookingFor: REVENUECAT_ENTITLEMENT_ID
+        lookingFor: REVENUECAT_ENTITLEMENT_IDS
       }, 
       'RevenueCat subscriber payload received'
     );
@@ -164,7 +185,7 @@ class PremiumService {
           hasEntitlements: entitlementKeys.length > 0,
           entitlementKeys,
           subscriptionKeys,
-          lookingFor: REVENUECAT_ENTITLEMENT_ID,
+          lookingFor: REVENUECAT_ENTITLEMENT_IDS,
           rawPayload: JSON.stringify(subscriberPayload).substring(0, 500) // İlk 500 karakter
         }, 
         'Premium restore skipped: aktif abonelik bulunamadı'
@@ -287,7 +308,8 @@ class PremiumService {
 
   private extractFromCustomerInfo(customerInfo: any): PremiumState | null {
     const activeEntitlements = customerInfo?.entitlements?.active || {};
-    const entitlement = activeEntitlements[REVENUECAT_ENTITLEMENT_ID];
+    const selected = selectEntitlement(activeEntitlements);
+    const entitlement = selected?.entitlement;
 
     if (!entitlement) {
       return null;
@@ -323,7 +345,8 @@ class PremiumService {
 
   private extractFromSubscriber(payload: RevenueCatSubscriberPayload): PremiumState | null {
     const entitlements = payload?.subscriber?.entitlements || {};
-    const entitlement = entitlements[REVENUECAT_ENTITLEMENT_ID];
+    const selected = selectEntitlement(entitlements);
+    const entitlement = selected?.entitlement;
 
     if (!entitlement) {
       return null;
