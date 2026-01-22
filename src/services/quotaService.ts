@@ -1,4 +1,5 @@
 import { db } from '../firebase';
+import type { Transaction } from 'firebase-admin/firestore';
 import { logger } from '../utils/logger';
 
 type CycleUnit = 'month';
@@ -119,7 +120,7 @@ class QuotaService {
     const docRef = db.collection(QUOTA_COLLECTION).doc(userId);
     const now = new Date();
 
-    return db.runTransaction(async (tx) => {
+    return db.runTransaction(async (tx: Transaction) => {
       const snap = await tx.get(docRef);
       const existing = snap.exists ? (snap.data() as Partial<QuotaDoc>) : null;
       const resolvedPlanId = resolvePlanId(existing?.planId ?? null) || 'free';
@@ -159,7 +160,7 @@ class QuotaService {
     const docRef = db.collection(QUOTA_COLLECTION).doc(userId);
     const now = new Date();
 
-    await db.runTransaction(async (tx) => {
+    await db.runTransaction(async (tx: Transaction) => {
       const snap = await tx.get(docRef);
       if (!snap.exists) {
         return;
