@@ -15,7 +15,7 @@ export const swaggerSpec = {
   },
   servers: [
     {
-      url: 'https://google-auth-e4er.onrender.com',
+      url: process.env.API_BASE_URL || 'https://ai-or-real-backend.onrender.com',
       description: 'Production server',
     },
     {
