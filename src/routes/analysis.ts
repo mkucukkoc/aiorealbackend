@@ -211,7 +211,7 @@ export function createAnalysisRouter(): Router {
     const requestIdHeader = req.headers['x-request-id'];
     const requestId = Array.isArray(requestIdHeader) ? requestIdHeader[0] : requestIdHeader;
     const userId = (req as AuthRequest).user?.id;
-    const { imageBase64, imageUrl, title, lastMessage } = req.body || {};
+    const { imageBase64, imageUrl, title, lastMessage, language } = req.body || {};
 
     if (!GEMINI_API_KEY) {
       logger.error({ requestId }, 'GEMINI_API_KEY is missing');
@@ -239,6 +239,8 @@ export function createAnalysisRouter(): Router {
 
       const inlineData = await extractImageData({ imageBase64, imageUrl });
       const analysisRef = db.collection('users').doc(userId).collection('analyze1').doc();
+      const normalizedLanguage = typeof language === 'string' ? language.toLowerCase().trim() : 'en';
+      const responseLanguage = normalizedLanguage === 'tr' ? 'tr' : 'en';
 
       const geminiPayload = {
         contents: [
@@ -246,7 +248,9 @@ export function createAnalysisRouter(): Router {
             parts: [
               {
                 text:
-                  'Act as a world-class forensic image analyst. Analyze the provided image for AI generation artifacts (GAN patterns, diffusion noise, unnatural lighting, pixel-level entropy deviations, metadata anomalies). Provide a detailed technical forensic report in JSON format.',
+                  responseLanguage === 'tr'
+                    ? 'Dünya çapında bir adli görüntü analiz uzmanı gibi davran. Verilen görseli yapay zeka üretim izleri (GAN desenleri, diffusion gürültüsü, yapay ışık, piksel düzeyinde entropi sapmaları, metadata anomalileri) açısından analiz et. Yanıtı JSON formatında, ayrıntılı teknik bir adli rapor olarak TÜRKÇE döndür.'
+                    : 'Act as a world-class forensic image analyst. Analyze the provided image for AI generation artifacts (GAN patterns, diffusion noise, unnatural lighting, pixel-level entropy deviations, metadata anomalies). Provide a detailed technical forensic report in JSON format in ENGLISH.',
               },
               { inlineData: { mimeType: inlineData.mimeType, data: inlineData.data } },
             ],
@@ -292,6 +296,7 @@ export function createAnalysisRouter(): Router {
         imageUrl: storedImage?.url || null,
         storagePath: storedImage?.path || null,
         sourceImageUrl: typeof imageUrl === 'string' ? imageUrl : null,
+        language: responseLanguage,
         result: parsedResult,
         createdAt: now,
         updatedAt: now,
