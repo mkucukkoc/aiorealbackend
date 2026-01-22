@@ -1,5 +1,5 @@
 import { db } from '../firebase';
-import type { Transaction } from 'firebase-admin/firestore';
+import type { Transaction, DocumentReference, DocumentSnapshot } from 'firebase-admin/firestore';
 import { logger } from '../utils/logger';
 
 type CycleUnit = 'month';
@@ -74,7 +74,7 @@ class QuotaService {
   }
 
   async getQuota(userId: string): Promise<QuotaDoc | null> {
-    const docRef = db.collection(QUOTA_COLLECTION).doc(userId);
+    const docRef = db.collection(QUOTA_COLLECTION).doc(userId) as DocumentReference;
     const snap = await docRef.get();
     if (!snap.exists) {
       return null;
@@ -121,7 +121,7 @@ class QuotaService {
     const now = new Date();
 
     return db.runTransaction(async (tx: Transaction) => {
-      const snap = await tx.get(docRef);
+      const snap = (await tx.get(docRef)) as DocumentSnapshot;
       const existing = snap.exists ? (snap.data() as Partial<QuotaDoc>) : null;
       const resolvedPlanId = resolvePlanId(existing?.planId ?? null) || 'free';
       const planQuota = PLAN_QUOTAS[resolvedPlanId];
@@ -157,11 +157,11 @@ class QuotaService {
   }
 
   async releaseImage(userId: string): Promise<void> {
-    const docRef = db.collection(QUOTA_COLLECTION).doc(userId);
+    const docRef = db.collection(QUOTA_COLLECTION).doc(userId) as DocumentReference;
     const now = new Date();
 
     await db.runTransaction(async (tx: Transaction) => {
-      const snap = await tx.get(docRef);
+      const snap = (await tx.get(docRef)) as DocumentSnapshot;
       if (!snap.exists) {
         return;
       }
