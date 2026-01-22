@@ -16,6 +16,8 @@ import { logger } from '../utils/logger';
 import { attachRouteLogger } from '../utils/routeLogger';
 import { config } from '../config';
 import { cleanupDeletedAccountArtifacts, ensureFirebaseAuthUserProfile, restoreSoftDeletedUser } from '../services/reactivationService';
+import { quotaService } from '../services/quotaService';
+import { premiumService } from '../services/premiumService';
 
 export function createAuthRouter(): Router {
   const r = Router();
@@ -128,6 +130,12 @@ export function createAuthRouter(): Router {
               logger.warn({ error, userId: reactivatedUser.id, operation: 'register_reactivate' }, 'Failed to create Firebase custom token');
             }
 
+            const premiumStatus = await premiumService.getStatus(reactivatedUser.id);
+            await quotaService.ensureQuotaForUser(reactivatedUser.id, {
+              premium: premiumStatus?.premium,
+              entitlementProductId: premiumStatus?.entitlementProductId ?? null,
+            });
+
             const response: AuthResponse = {
               ...tokens,
               user: {
@@ -193,6 +201,12 @@ export function createAuthRouter(): Router {
         } catch (error) {
           logger.warn({ error, userId: user.id, operation: 'register' }, 'Failed to create Firebase custom token');
         }
+
+        const premiumStatus = await premiumService.getStatus(user.id);
+        await quotaService.ensureQuotaForUser(user.id, {
+          premium: premiumStatus?.premium,
+          entitlementProductId: premiumStatus?.entitlementProductId ?? null,
+        });
 
         const response: AuthResponse = {
           ...tokens,
@@ -590,6 +604,12 @@ export function createAuthRouter(): Router {
         } catch (error) {
           logger.warn({ error, userId: user.id, operation: 'login' }, 'Failed to create Firebase custom token');
         }
+
+        const premiumStatus = await premiumService.getStatus(user.id);
+        await quotaService.ensureQuotaForUser(user.id, {
+          premium: premiumStatus?.premium,
+          entitlementProductId: premiumStatus?.entitlementProductId ?? null,
+        });
 
         const response: AuthResponse = {
           ...tokens,
@@ -1046,6 +1066,12 @@ export function createAuthRouter(): Router {
           logger.warn({ error, userId: user.id, operation: 'register_verify' }, 'Failed to create Firebase custom token');
         }
 
+        const premiumStatus = await premiumService.getStatus(user.id);
+        await quotaService.ensureQuotaForUser(user.id, {
+          premium: premiumStatus?.premium,
+          entitlementProductId: premiumStatus?.entitlementProductId ?? null,
+        });
+
         const response: AuthResponse = {
           ...tokens,
           user: {
@@ -1198,6 +1224,12 @@ export function createAuthRouter(): Router {
         } catch (error) {
           logger.warn({ error, userId: ensuredUser.id, operation: 'google_direct' }, 'Failed to create Firebase custom token');
         }
+
+        const premiumStatus = await premiumService.getStatus(ensuredUser.id);
+        await quotaService.ensureQuotaForUser(ensuredUser.id, {
+          premium: premiumStatus?.premium,
+          entitlementProductId: premiumStatus?.entitlementProductId ?? null,
+        });
 
         const response: AuthResponse = {
           ...tokens,

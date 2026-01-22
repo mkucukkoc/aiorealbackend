@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import * as admin from 'firebase-admin';
 import { createHash } from 'crypto';
 import { logger } from '../utils/logger';
+import { quotaService, resolvePlanId } from '../services/quotaService';
 import { attachRouteLogger } from '../utils/routeLogger';
 
 if (!admin.apps.length) {
@@ -580,6 +581,15 @@ export const revenuecatWebhookHandler = async (req: Request, res: Response): Pro
       store,
       environment,
     });
+
+    try {
+      const planId = resolvePlanId(resolvedUpdates.productId ?? null);
+      if (planId) {
+        await quotaService.syncQuotaFromPlan(userId, planId);
+      }
+    } catch (error) {
+      logger.warn({ err: error, userId }, 'Quota sync failed after RevenueCat webhook');
+    }
 
     res.status(200).send('Success');
   } catch (error) {

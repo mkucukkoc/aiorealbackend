@@ -13,6 +13,8 @@ import { authRateLimits } from '../middleware/rateLimitMiddleware';
 import { admin } from '../firebase';
 import { logger } from '../utils/logger';
 import { attachRouteLogger } from '../utils/routeLogger';
+import { quotaService } from '../services/quotaService';
+import { premiumService } from '../services/premiumService';
 import * as jwt from 'jsonwebtoken';
 
 export function createAppleAuthRouter(): Router {
@@ -173,6 +175,12 @@ export function createAppleAuthRouter(): Router {
             operation: 'apple_custom_token',
           });
         }
+
+        const premiumStatus = await premiumService.getStatus(userRecord.id);
+        await quotaService.ensureQuotaForUser(userRecord.id, {
+          premium: premiumStatus?.premium,
+          entitlementProductId: premiumStatus?.entitlementProductId ?? null,
+        });
         
         await setJson(`als:${state}`, {
           ready: true,

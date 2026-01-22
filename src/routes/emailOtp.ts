@@ -6,6 +6,8 @@ import { config } from '../config';
 import { TokenService } from '../services/tokenService';
 import { db } from '../firebase';
 import { logger } from '../utils/logger';
+import { quotaService } from '../services/quotaService';
+import { premiumService } from '../services/premiumService';
 import { attachRouteLogger } from '../utils/routeLogger';
 
 export function createEmailOtpRouter(): Router {
@@ -124,6 +126,11 @@ export function createEmailOtpRouter(): Router {
     logEmailOtp('verify_refresh_token_created', { refreshTokenId: refreshRef.id });
     const access = await TokenService.createAccessToken(userId, 'email-otp-session');
     logEmailOtp('verify_access_token_created', { userId });
+    const premiumStatus = await premiumService.getStatus(userId);
+    await quotaService.ensureQuotaForUser(userId, {
+      premium: premiumStatus?.premium,
+      entitlementProductId: premiumStatus?.entitlementProductId ?? null,
+    });
     return res.json({
       access_token: access,
       refresh_token: rawRefresh,

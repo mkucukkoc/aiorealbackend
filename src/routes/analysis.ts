@@ -6,6 +6,7 @@ import { authRateLimits } from '../middleware/rateLimitMiddleware';
 import { db, storage } from '../firebase';
 import { logger } from '../utils/logger';
 import { ResponseBuilder } from '../types/response';
+import { quotaService } from '../services/quotaService';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const GEMINI_MODEL = 'gemini-3-flash-preview';
@@ -227,6 +228,12 @@ export function createAnalysisRouter(): Router {
     }
 
     try {
+      const quotaResult = await quotaService.consumeImage(userId);
+      if (!quotaResult.allowed) {
+        return res.status(429).json(
+          ResponseBuilder.error('QUOTA_EXCEEDED', 'Quota limit reached')
+        );
+      }
       logger.info(
         {
           requestId,
@@ -323,6 +330,26 @@ export function createAnalysisRouter(): Router {
         )
       );
     } catch (error: any) {
+      if (userId) {
+        try {
+          await quotaService.releaseImage(userId);
+        } catch (releaseError) {
+          logger.warn({ err: releaseError, userId }, 'Failed to release quota after analysis failure');
+        }
+      }
+      const status = error?.response?.status;
+      if (status === 404) {
+        return res.status(404).json({
+          code: 'NOT_FOUND',
+          message: 'Not found',
+        });
+      }
+      if (status === 500) {
+        return res.status(500).json({
+          code: 'INTERNAL_ERROR',
+          message: 'Internal server error',
+        });
+      }
       logger.error(
         { requestId, userId, error: error?.message ?? error },
         'Forensic analysis failed'

@@ -14,6 +14,8 @@ import { admin } from '../firebase';
 import { logger } from '../utils/logger';
 import { cleanupDeletedAccountArtifacts, ensureFirebaseAuthUserProfile, restoreSoftDeletedUser } from '../services/reactivationService';
 import { attachRouteLogger } from '../utils/routeLogger';
+import { quotaService } from '../services/quotaService';
+import { premiumService } from '../services/premiumService';
 
 export function createGoogleAuthRouter(): Router {
   const r = Router();
@@ -317,6 +319,12 @@ export function createGoogleAuthRouter(): Router {
             'Failed to create Firebase custom token for Google user'
           );
         }
+
+        const premiumStatus = await premiumService.getStatus(ensuredUser.id);
+        await quotaService.ensureQuotaForUser(ensuredUser.id, {
+          premium: premiumStatus?.premium,
+          entitlementProductId: premiumStatus?.entitlementProductId ?? null,
+        });
         
         const readyPayload = {
           ready: true,

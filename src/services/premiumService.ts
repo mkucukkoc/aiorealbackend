@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import { db } from '../firebase';
 import { logger } from '../utils/logger';
 import { revenueCatService } from './revenueCatService';
+import { quotaService, resolvePlanId } from './quotaService';
 import { DeletedUserRegistryRecord } from '../types/deleteAccount';
 
 const PREMIUM_COLLECTION = 'premiumusers';
@@ -500,6 +501,7 @@ class PremiumService {
 
     await docRef.set(payload, { merge: true });
     await this.logPremiumDecision(userId, state, context, now);
+    await this.syncQuotaForUser(userId, state);
 
     logger.info(
       {
@@ -514,6 +516,34 @@ class PremiumService {
     );
 
     return payload;
+  }
+
+  private async syncQuotaForUser(userId: string, state: PremiumState) {
+    const candidates: string[] = [];
+    if (state.entitlementProductId) {
+      candidates.push(state.entitlementProductId);
+    }
+    const raw = state.raw;
+    if (Array.isArray(raw?.activeSubscriptions)) {
+      candidates.push(...raw.activeSubscriptions);
+    }
+    if (raw?.subscriber?.subscriptions && typeof raw.subscriber.subscriptions === 'object') {
+      candidates.push(...Object.keys(raw.subscriber.subscriptions));
+    }
+    if (typeof raw?.productId === 'string') {
+      candidates.push(raw.productId);
+    }
+    if (typeof raw?.product_id === 'string') {
+      candidates.push(raw.product_id);
+    }
+
+    for (const candidate of candidates) {
+      const planId = resolvePlanId(candidate);
+      if (planId) {
+        await quotaService.syncQuotaFromPlan(userId, planId);
+        return;
+      }
+    }
   }
 
   private buildSnapshotPreview(customerInfo: any) {
