@@ -75,7 +75,7 @@ export const config = {
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID || '',
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-    redirectUri: process.env.GOOGLE_REDIRECT_URI || 'https://google-auth-e4er.onrender.com/auth/google/callback',
+    redirectUri: process.env.GOOGLE_REDIRECT_URI || 'https://ai-or-real-backend.onrender.com/auth/google/callback',
   },
   app: {
     redirectUri: process.env.APP_REDIRECT_URI || 'avenia://auth',
@@ -96,7 +96,7 @@ export const config = {
     passwordResetTokenTtlHours: Number(process.env.PASSWORD_RESET_TTL_HOURS || 1),
   },
   api: {
-    baseUrl: process.env.API_BASE_URL || 'https://google-auth-e4er.onrender.com',
+    baseUrl: process.env.API_BASE_URL || 'https://ai-or-real-backend.onrender.com',
     pdfRead: {
       baseUrl: process.env.PDFREAD_BASE_URL || 'https://google-auth-e4er.onrender.com',
       fallbackBaseUrl: process.env.PDFREAD_FALLBACK_BASE_URL || '',
