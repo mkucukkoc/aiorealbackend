@@ -121,7 +121,7 @@ class QuotaService {
     const now = new Date();
 
     return db.runTransaction(async (tx: Transaction) => {
-      const snap = (await tx.get(docRef)) as DocumentSnapshot;
+      const snap = (await tx.get(docRef)) as unknown as DocumentSnapshot;
       const existing = snap.exists ? (snap.data() as Partial<QuotaDoc>) : null;
       const resolvedPlanId = resolvePlanId(existing?.planId ?? null) || 'free';
       const planQuota = PLAN_QUOTAS[resolvedPlanId];
@@ -161,7 +161,7 @@ class QuotaService {
     const now = new Date();
 
     await db.runTransaction(async (tx: Transaction) => {
-      const snap = (await tx.get(docRef)) as DocumentSnapshot;
+      const snap = (await tx.get(docRef)) as unknown as DocumentSnapshot;
       if (!snap.exists) {
         return;
       }
