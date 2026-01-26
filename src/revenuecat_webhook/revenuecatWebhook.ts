@@ -56,6 +56,7 @@ interface PremiumUserDoc {
   store: PremiumStore;
   productId: string | null;
   entitlementId: string | null;
+  entitlementIds?: string[] | null;
   transactionId: string | null;
   originalTransactionId: string | null;
   transactionIdHash: string | null;
@@ -468,6 +469,28 @@ export const revenuecatWebhookHandler = async (req: Request, res: Response): Pro
     const eventId = webhookEvent?.id || webhookEvent?.event_id || webhookEvent?.transaction_id || null;
     const requestId = webhookEvent?.event_id || webhookEvent?.request_id || null;
     const alias = webhookEvent?.subscriber_alias || subscriber?.subscriber_alias || null;
+    const eventEntitlementIds = Array.isArray(webhookEvent?.entitlement_ids)
+      ? webhookEvent.entitlement_ids.filter((id: any) => typeof id === 'string' && id.trim() !== '')
+      : [];
+    const subscriberEntitlementIds =
+      subscriber?.entitlements && typeof subscriber.entitlements === 'object'
+        ? Object.keys(subscriber.entitlements)
+        : [];
+    const resolvedEntitlementIds =
+      eventEntitlementIds.length > 0 ? eventEntitlementIds : subscriberEntitlementIds;
+
+    logger.info(
+      {
+        userId,
+        eventTypeName,
+        productIdentifier,
+        entitlementId: entitlementSelection?.key ?? null,
+        entitlementIds: resolvedEntitlementIds,
+        expiresAt,
+        derivedStatus,
+      },
+      'RevenueCat webhook entitlement snapshot'
+    );
 
     const premiumUsersRef = admin.firestore().collection(PREMIUM_USER_COLLECTION).doc(userId);
 
@@ -504,6 +527,7 @@ export const revenuecatWebhookHandler = async (req: Request, res: Response): Pro
         store,
         productId: productIdentifier ?? existingData?.productId ?? null,
         entitlementId: entitlementSelection?.key ?? existingData?.entitlementId ?? null,
+        entitlementIds: resolvedEntitlementIds,
         transactionId: transactionId ?? existingData?.transactionId ?? null,
         originalTransactionId: originalTransactionId ?? existingData?.originalTransactionId ?? null,
         transactionIdHash: hashValue(transactionId) ?? existingData?.transactionIdHash ?? null,
@@ -557,6 +581,19 @@ export const revenuecatWebhookHandler = async (req: Request, res: Response): Pro
       if (updates.premium && !updates.premiumExpiresAt && expiresAt) {
         updates.premiumExpiresAt = expiresAt;
       }
+
+      logger.info(
+        {
+          userId,
+          eventTypeName,
+          premium: updates.premium,
+          premiumStatus: updates.premiumStatus,
+          premiumExpiresAt: updates.premiumExpiresAt,
+          entitlementId: updates.entitlementId,
+          entitlementIds: updates.entitlementIds,
+        },
+        'RevenueCat webhook premium updates'
+      );
 
       transaction.set(premiumUsersRef, updates, { merge: true });
       finalUpdates = updates;
