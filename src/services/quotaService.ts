@@ -4,7 +4,6 @@ import { logger } from '../utils/logger';
 import { resolvePlanConfig, getPlanConfigById, PlanCycle } from '../config/quotaConfig';
 import { createHash } from 'crypto';
 
-const USERS_QUOTA_COLLECTION = 'users_quota';
 const SUBSCRIPTIONS_COLLECTION = 'subscriptions_quota';
 const WALLETS_COLLECTION = 'quota_wallets';
 const USAGES_COLLECTION = 'quota_usages';
@@ -158,8 +157,6 @@ class QuotaService {
     userId: string,
     premiumStatus?: { premium?: boolean; entitlementProductId?: string | null }
   ): Promise<QuotaSnapshot | null> {
-    await this.ensureUserRecord(userId);
-
     const subscription = await this.getSubscription(userId);
     if (subscription) {
       return this.buildQuotaSnapshot(subscription);
@@ -173,20 +170,6 @@ class QuotaService {
     }
 
     return this.getQuotaSnapshot(userId);
-  }
-
-  async ensureUserRecord(userId: string, email?: string | null): Promise<void> {
-    const docRef = db.collection(USERS_QUOTA_COLLECTION).doc(userId);
-    const now = new Date().toISOString();
-    await docRef.set(
-      {
-        id: userId,
-        email: email ?? null,
-        updated_at: now,
-        created_at: now,
-      },
-      { merge: true }
-    );
   }
 
   async getSubscription(userId: string): Promise<SubscriptionDoc | null> {
@@ -311,7 +294,7 @@ class QuotaService {
       return { allowed: false, status: 'rejected', remaining: 0, walletId: null };
     }
 
-    const walletRef = db.collection(WALLETS_COLLECTION).doc(wallet.id) as DocumentReference;
+    const walletRef = db.collection(WALLETS_COLLECTION).doc(userId) as DocumentReference;
     const usageRef = db.collection(USAGES_COLLECTION).doc(`${userId}_${requestId}`) as DocumentReference;
     const nowIso = new Date().toISOString();
 
@@ -362,7 +345,7 @@ class QuotaService {
       tx.set(usageRef as unknown as DocumentReference, {
         id: `${userId}_${requestId}`,
         user_id: userId,
-        wallet_id: walletData.id,
+        wallet_id: userId,
         request_id: requestId,
         action,
         amount,
@@ -422,17 +405,12 @@ class QuotaService {
   }
 
   async getActiveWallet(userId: string): Promise<QuotaWalletDoc | null> {
-    const snapshot = await db
-      .collection(WALLETS_COLLECTION)
-      .where('user_id', '==', userId)
-      .where('status', '==', 'active')
-      .orderBy('period_end', 'desc')
-      .limit(1)
-      .get();
-
-    if (snapshot.empty) return null;
-    const doc = snapshot.docs[0];
-    return { ...(doc.data() as QuotaWalletDoc), id: doc.id };
+    const walletRef = db.collection(WALLETS_COLLECTION).doc(userId) as DocumentReference;
+    const snap = await walletRef.get();
+    if (!snap.exists) return null;
+    const wallet = snap.data() as QuotaWalletDoc;
+    if (wallet.status !== 'active') return null;
+    return { ...wallet, id: wallet.id || userId };
   }
 
   async ensureActiveWallet(userId: string, subscription: SubscriptionDoc): Promise<QuotaWalletDoc | null> {
@@ -482,9 +460,9 @@ class QuotaService {
     }
 
     const nowIso = new Date().toISOString();
-    const walletRef = db.collection(WALLETS_COLLECTION).doc();
+    const walletRef = db.collection(WALLETS_COLLECTION).doc(subscription.user_id);
     const wallet: QuotaWalletDoc = {
-      id: walletRef.id,
+      id: subscription.user_id,
       user_id: subscription.user_id,
       subscription_id: subscription.id,
       plan_id: subscription.plan_id,
@@ -507,28 +485,21 @@ class QuotaService {
     userId: string,
     options: { reason: string; setRemainingToZero: boolean }
   ): Promise<void> {
-    const snapshot = await db
-      .collection(WALLETS_COLLECTION)
-      .where('user_id', '==', userId)
-      .where('status', '==', 'active')
-      .get();
-
-    if (snapshot.empty) return;
+    const walletRef = db.collection(WALLETS_COLLECTION).doc(userId) as DocumentReference;
+    const snap = await walletRef.get();
+    if (!snap.exists) return;
     const nowIso = new Date().toISOString();
-    const batch = db.batch();
-
-    snapshot.docs.forEach((doc: QueryDocumentSnapshot) => {
-      const data = doc.data() as QuotaWalletDoc;
-      batch.update(doc.ref, {
+    const data = snap.data() as QuotaWalletDoc;
+    await walletRef.set(
+      {
         status: 'closed',
         updated_at: nowIso,
         last_usage_at: data.last_usage_at ?? null,
         quota_used: options.setRemainingToZero ? data.quota_total : data.quota_used,
         closed_reason: options.reason,
-      });
-    });
-
-    await batch.commit();
+      },
+      { merge: true }
+    );
   }
 
   async processRevenueCatEvent(payload: RevenueCatEventContext): Promise<void> {
