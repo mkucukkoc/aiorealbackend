@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import * as admin from 'firebase-admin';
 import { createHash } from 'crypto';
 import { logger } from '../utils/logger';
-import { quotaService, resolvePlanId } from '../services/quotaService';
+import { quotaService } from '../services/quotaService';
 import { attachRouteLogger } from '../utils/routeLogger';
 
 if (!admin.apps.length) {
@@ -110,6 +110,64 @@ const hashValue = (value?: string | object | null): string | null => {
   }
   const normalized = typeof value === 'string' ? value : JSON.stringify(value);
   return createHash('sha256').update(normalized).digest('hex');
+};
+
+const toIso = (value?: string | number | null): string | null => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') {
+    return new Date(value).toISOString();
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
+};
+
+const resolvePeriodWindow = (webhookEvent: any, entitlement: any) => {
+  const periodStart =
+    toIso(webhookEvent?.period_start_ms) ||
+    toIso(webhookEvent?.purchased_at_ms) ||
+    toIso(entitlement?.purchase_date_ms) ||
+    toIso(entitlement?.purchase_date) ||
+    toIso(webhookEvent?.purchase_date) ||
+    null;
+  const periodEnd =
+    toIso(webhookEvent?.period_end_ms) ||
+    toIso(webhookEvent?.expiration_at_ms) ||
+    toIso(entitlement?.expires_date_ms) ||
+    toIso(entitlement?.expires_date) ||
+    toIso(webhookEvent?.expires_date) ||
+    null;
+  const originalPurchaseDate =
+    toIso(webhookEvent?.original_purchase_date_ms) ||
+    toIso(entitlement?.original_purchase_date_ms) ||
+    toIso(entitlement?.original_purchase_date) ||
+    null;
+  return { periodStart, periodEnd, originalPurchaseDate };
+};
+
+const normalizeBoolean = (value: unknown): boolean | null => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+  if (typeof value === 'string') {
+    const normalized = value.toLowerCase().trim();
+    if (normalized === 'true' || normalized === '1') return true;
+    if (normalized === 'false' || normalized === '0') return false;
+  }
+  return null;
+};
+
+const resolveWillRenew = (webhookEvent: any, subscription: any): boolean | null => {
+  const candidates = [
+    webhookEvent?.will_renew,
+    webhookEvent?.auto_renew_status,
+    subscription?.auto_renew_status,
+    subscription?.auto_renew_status_at,
+  ];
+  for (const value of candidates) {
+    const normalized = normalizeBoolean(value);
+    if (normalized !== null) return normalized;
+  }
+  return null;
 };
 
 const determinePremiumStatus = (productIdentifier?: string | null): PremiumStatus => {
@@ -466,6 +524,14 @@ export const revenuecatWebhookHandler = async (req: Request, res: Response): Pro
       webhookEvent,
       productIdentifier
     );
+    const subscriptionMeta = productIdentifier
+      ? subscriber?.subscriptions?.[productIdentifier]
+      : null;
+    const { periodStart, periodEnd, originalPurchaseDate } = resolvePeriodWindow(
+      webhookEvent,
+      entitlement
+    );
+    const willRenew = resolveWillRenew(webhookEvent, subscriptionMeta);
     const eventId = webhookEvent?.id || webhookEvent?.event_id || webhookEvent?.transaction_id || null;
     const requestId = webhookEvent?.event_id || webhookEvent?.request_id || null;
     const alias = webhookEvent?.subscriber_alias || subscriber?.subscriber_alias || null;
@@ -645,10 +711,24 @@ export const revenuecatWebhookHandler = async (req: Request, res: Response): Pro
     });
 
     try {
-      const planId = resolvePlanId(resolvedUpdates.productId ?? null);
-      if (planId) {
-        await quotaService.syncQuotaFromPlan(userId, planId);
-      }
+      await quotaService.processRevenueCatEvent({
+        userId,
+        eventId,
+        eventType: eventTypeName,
+        rcAppUserId: rcAppUserIdRaw,
+        productId: resolvedUpdates.productId ?? null,
+        entitlementIds: resolvedEntitlementIds,
+        platform:
+          subscriber?.attributes?.platform?.value ||
+          webhookEvent?.store ||
+          subscriber?.attributes?.store?.value ||
+          null,
+        willRenew,
+        periodStart,
+        periodEnd,
+        originalPurchaseDate,
+        rawEvent: webhookEvent,
+      });
     } catch (error) {
       logger.warn({ err: error, userId }, 'Quota sync failed after RevenueCat webhook');
     }
