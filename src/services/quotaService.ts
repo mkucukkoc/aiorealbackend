@@ -11,10 +11,8 @@ type PlanQuota = {
 
 export const PLAN_QUOTAS: Record<string, PlanQuota> = {
   free: { imagesPerCycle: 2, cycle: 'month' },
-  premium_base_monthly: { imagesPerCycle: 100, cycle: 'month' },
-  premium_pro_monthly: { imagesPerCycle: 400, cycle: 'month' },
-  premium_base_yearly: { imagesPerCycle: 100, cycle: 'month' },
-  premium_pro_yearly: { imagesPerCycle: 300, cycle: 'month' },
+  premium_monthly: { imagesPerCycle: 400, cycle: 'month' },
+  premium_yearly: { imagesPerCycle: 300, cycle: 'month' },
 };
 
 const QUOTA_COLLECTION = 'users_quato';
@@ -47,10 +45,14 @@ const normalizePlanId = (value: string) => value.toLowerCase().trim();
 export const resolvePlanId = (candidate: string | null | undefined) => {
   if (!candidate) return null;
   const normalized = normalizePlanId(candidate);
-  if (normalized.includes('base-monthly')) return 'premium_base_monthly';
-  if (normalized.includes('base-yearly') || normalized.includes('base-annual')) return 'premium_base_yearly';
-  if (normalized.includes('pro-monthly')) return 'premium_pro_monthly';
-  if (normalized.includes('pro-yearly') || normalized.includes('pro-annual')) return 'premium_pro_yearly';
+  if (normalized.includes('aiorreal-monthly')) return 'premium_monthly';
+  if (normalized.includes('aiorreal-yearly') || normalized.includes('aiorreal-annual')) {
+    return 'premium_yearly';
+  }
+  if (normalized.includes('premium_pro_monthly')) return 'premium_monthly';
+  if (normalized.includes('premium_pro_yearly')) return 'premium_yearly';
+  if (normalized.includes('pro-monthly')) return 'premium_monthly';
+  if (normalized.includes('pro-yearly') || normalized.includes('pro-annual')) return 'premium_yearly';
   if (PLAN_QUOTAS[normalized]) {
     return normalized;
   }

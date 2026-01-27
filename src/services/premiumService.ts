@@ -11,7 +11,7 @@ const PREMIUM_DECISION_LOG_COLLECTION = 'premium_decision_logs';
 const USERS_COLLECTION = 'users';
 const SUBSC_COLLECTION = 'subsc';
 const REVENUECAT_ENTITLEMENT_IDS = (process.env.REVENUECAT_ENTITLEMENT_ID ||
-  'pro_plan_entitlement,base_plan_entitlement')
+  'aiorrealentitlement')
   .split(',')
   .map((value) => value.trim())
   .filter((value) => value.length > 0);

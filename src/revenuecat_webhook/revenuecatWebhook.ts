@@ -11,7 +11,7 @@ if (!admin.apps.length) {
 
 const WEBHOOK_SECRET = (process.env.REVENUECAT_WEBHOOK_SECRET || '').trim();
 const REVENUECAT_ENTITLEMENT_IDS = (process.env.REVENUECAT_ENTITLEMENT_ID ||
-  'pro_plan_entitlement,base_plan_entitlement')
+  'aiorrealentitlement')
   .split(',')
   .map((value) => value.trim())
   .filter((value) => value.length > 0);
