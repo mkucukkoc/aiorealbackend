@@ -1,5 +1,5 @@
 import { db } from '../firebase';
-import type { Transaction, DocumentReference } from 'firebase-admin/firestore';
+import type { Transaction, DocumentReference, DocumentSnapshot, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { logger } from '../utils/logger';
 import { resolvePlanConfig, getPlanConfigById, PlanCycle } from '../config/quotaConfig';
 import { createHash } from 'crypto';
@@ -311,14 +311,14 @@ class QuotaService {
       return { allowed: false, status: 'rejected', remaining: 0, walletId: null };
     }
 
-    const walletRef = db.collection(WALLETS_COLLECTION).doc(wallet.id);
-    const usageRef = db.collection(USAGES_COLLECTION).doc(`${userId}_${requestId}`);
+    const walletRef = db.collection(WALLETS_COLLECTION).doc(wallet.id) as DocumentReference;
+    const usageRef = db.collection(USAGES_COLLECTION).doc(`${userId}_${requestId}`) as DocumentReference;
     const nowIso = new Date().toISOString();
 
     return db.runTransaction(async (tx: Transaction) => {
       const [walletSnap, usageSnap] = await Promise.all([
-        tx.get(walletRef),
-        tx.get(usageRef as unknown as DocumentReference),
+        tx.get(walletRef) as unknown as DocumentSnapshot,
+        tx.get(usageRef) as unknown as DocumentSnapshot,
       ]);
 
       if (!walletSnap.exists) {
@@ -517,7 +517,7 @@ class QuotaService {
     const nowIso = new Date().toISOString();
     const batch = db.batch();
 
-    snapshot.docs.forEach((doc) => {
+    snapshot.docs.forEach((doc: QueryDocumentSnapshot) => {
       const data = doc.data() as QuotaWalletDoc;
       batch.update(doc.ref, {
         status: 'closed',
@@ -538,7 +538,7 @@ class QuotaService {
     const nowIso = new Date().toISOString();
 
     let duplicate = false;
-    await db.runTransaction(async (tx) => {
+    await db.runTransaction(async (tx: Transaction) => {
       const snap = await tx.get(webhookRef as unknown as DocumentReference);
       if (snap.exists) {
         duplicate = true;
@@ -570,7 +570,7 @@ class QuotaService {
     let planChanged = false;
     let periodChanged = false;
 
-    await db.runTransaction(async (tx) => {
+    await db.runTransaction(async (tx: Transaction) => {
       const existingSnap = await tx.get(subscriptionRef as unknown as DocumentReference);
       const existing = existingSnap.exists ? (existingSnap.data() as SubscriptionDoc) : null;
       const existingPlanId = existing?.plan_id ?? null;
@@ -601,7 +601,7 @@ class QuotaService {
       );
 
       shouldOpenWallet = isActive && (isPurchaseEvent(eventType) || planChanged || periodChanged);
-      shouldCloseWallet = shouldCloseWallet || (shouldCloseWalletStatus(status) && existing?.is_active);
+      shouldCloseWallet = shouldCloseWallet || (shouldCloseWalletStatus(status) && Boolean(existing?.is_active));
 
       const updates: SubscriptionDoc = {
         id: payload.userId,
@@ -629,8 +629,9 @@ class QuotaService {
     });
 
     if (nextSubscription && shouldCloseWallet) {
-      await this.closeWalletsForUser(nextSubscription.user_id, {
-        reason: nextSubscription.status,
+      const resolved = nextSubscription as SubscriptionDoc;
+      await this.closeWalletsForUser(resolved.user_id, {
+        reason: resolved.status,
         setRemainingToZero: true,
       });
     }
