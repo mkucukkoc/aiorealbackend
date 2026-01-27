@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import axios from 'axios';
 import type { QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { authenticateToken, AuthRequest } from '../middleware/authMiddleware';
@@ -7,6 +7,7 @@ import { db, storage } from '../firebase';
 import { logger } from '../utils/logger';
 import { ResponseBuilder } from '../types/response';
 import { quotaService } from '../services/quotaService';
+import { randomUUID } from 'crypto';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const GEMINI_MODEL = 'gemini-3-flash-preview';
@@ -208,9 +209,10 @@ const resolveStoragePath = (data: { storagePath?: string; imageUrl?: string } | 
 export function createAnalysisRouter(): Router {
   const r = Router();
 
-  r.post('/forensic', authenticateToken, async (req, res) => {
+  const handleDetectRequest = async (req: Request, res: Response) => {
     const requestIdHeader = req.headers['x-request-id'];
-    const requestId = Array.isArray(requestIdHeader) ? requestIdHeader[0] : requestIdHeader;
+    const requestIdRaw = Array.isArray(requestIdHeader) ? requestIdHeader[0] : requestIdHeader;
+    const requestId = requestIdRaw || randomUUID();
     const userId = (req as AuthRequest).user?.id;
     const { imageBase64, imageUrl, title, lastMessage, language } = req.body || {};
 
@@ -228,10 +230,12 @@ export function createAnalysisRouter(): Router {
     }
 
     try {
-      const quotaResult = await quotaService.consumeImage(userId);
+      const quotaResult = await quotaService.reserveUsage(userId, requestId, 'ai_detect');
       if (!quotaResult.allowed) {
         return res.status(429).json(
-          ResponseBuilder.error('QUOTA_EXCEEDED', 'Quota limit reached')
+          ResponseBuilder.error('QUOTA_EXCEEDED', 'Quota limit reached', {
+            remaining: quotaResult.remaining,
+          })
         );
       }
       logger.info(
@@ -323,16 +327,27 @@ export function createAnalysisRouter(): Router {
       const currentCount = (userSnap.data() as any)?.analyze1 || 0;
       await userRef.set({ analyze1: currentCount + 1 }, { merge: true });
 
+      try {
+        await quotaService.commitUsage(userId, requestId);
+      } catch (commitError) {
+        logger.warn({ err: commitError, userId, requestId }, 'Failed to commit quota usage');
+      }
+
+      const quotaSnapshot = await quotaService.getQuotaSnapshot(userId);
       return res.json(
         ResponseBuilder.success(
-          { analysisId: analysisRef.id, result: parsedResult },
+          {
+            analysisId: analysisRef.id,
+            result: parsedResult,
+            quota: quotaSnapshot,
+          },
           'Analysis completed'
         )
       );
     } catch (error: any) {
       if (userId) {
         try {
-          await quotaService.releaseImage(userId);
+          await quotaService.rollbackUsage(userId, requestId);
         } catch (releaseError) {
           logger.warn({ err: releaseError, userId }, 'Failed to release quota after analysis failure');
         }
@@ -358,7 +373,10 @@ export function createAnalysisRouter(): Router {
         ResponseBuilder.error('analysis_failed', 'Failed to analyze image')
       );
     }
-  });
+  };
+
+  r.post('/forensic', authenticateToken, handleDetectRequest);
+  r.post('/detect', authenticateToken, handleDetectRequest);
 
   r.get('/history', authenticateToken, async (req, res) => {
     const requestIdHeader = req.headers['x-request-id'];
