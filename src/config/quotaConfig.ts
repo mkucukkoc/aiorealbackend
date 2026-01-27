@@ -15,7 +15,7 @@ const DEFAULT_PLAN_CONFIG: PlanConfig[] = [
     planId: 'free',
     planKey: 'free',
     cycle: 'monthly',
-    quota: 0,
+    quota: 2,
     productIds: [],
   },
   {
@@ -59,6 +59,13 @@ export const resolvePlanConfig = (candidate: string | null | undefined): PlanCon
   if (!candidate) return null;
   const normalized = candidate.toLowerCase().trim();
   if (!normalized) return null;
+
+  if (normalized.includes('aiorreal-monthly')) {
+    return getPlanConfigById('premium_monthly');
+  }
+  if (normalized.includes('aiorreal-yearly') || normalized.includes('aiorreal-annual')) {
+    return getPlanConfigById('premium_yearly');
+  }
 
   for (const plan of PLAN_CONFIG) {
     if (plan.planId.toLowerCase() === normalized) return plan;

@@ -508,6 +508,20 @@ class QuotaService {
     const webhookRef = db.collection(WEBHOOK_EVENTS_COLLECTION).doc(eventDocId);
     const nowIso = new Date().toISOString();
 
+    const planConfigHint = resolvePlanConfig(payload.productId) ?? getPlanConfigById(payload.productId);
+    logger.info(
+      {
+        userId: payload.userId,
+        eventType,
+        productId: payload.productId,
+        entitlementIds: payload.entitlementIds,
+        planId: planConfigHint?.planId ?? null,
+        planKey: planConfigHint?.planKey ?? null,
+        cycle: planConfigHint?.cycle ?? null,
+      },
+      'Quota webhook event mapping'
+    );
+
     let duplicate = false;
     await db.runTransaction(async (tx: Transaction) => {
       const snap = await tx.get(webhookRef as unknown as DocumentReference);
