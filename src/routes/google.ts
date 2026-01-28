@@ -353,9 +353,9 @@ export function createGoogleAuthRouter(): Router {
           appRedirectUri: config.app?.redirectUri,
           deviceId: session.device_id,
         }, '[GoogleAuth] /callback processed successfully');
-        const appRedirect = config.app?.redirectUri || 'avenia://auth';
-        const redirectUrl = `${appRedirect}?state=${encodeURIComponent(state)}&success=1`;
-        return res.redirect(redirectUrl);
+        return res
+          .status(200)
+          .send('<html><body>Login successful. You may close this window.</body></html>');
       } catch (error) {
         logger.error({ requestId, err: error, operation: 'googleAuth' }, 'Google auth error');
         
