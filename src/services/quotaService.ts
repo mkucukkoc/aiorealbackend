@@ -192,15 +192,20 @@ class QuotaService {
   async buildQuotaSnapshot(subscription: SubscriptionDoc): Promise<QuotaSnapshot | null> {
     const wallet = await this.getActiveWallet(subscription.user_id);
     const planConfig = getPlanConfigById(subscription.plan_id);
-    const total = wallet?.quota_total ?? planConfig?.quota ?? 0;
-    const used = wallet?.quota_used ?? 0;
+    const periodEndRaw = wallet?.period_end ?? subscription.current_period_end;
+    const periodEnd = periodEndRaw ? new Date(periodEndRaw) : null;
+    const periodValid = periodEnd && !Number.isNaN(periodEnd.getTime()) && new Date() < periodEnd;
+    const active = subscription.is_active && Boolean(periodValid);
+
+    const total = active ? (wallet?.quota_total ?? planConfig?.quota ?? 0) : 0;
+    const used = active ? (wallet?.quota_used ?? 0) : 0;
     const remaining = Math.max(0, total - used);
 
     return {
       planId: subscription.plan_id,
       planKey: subscription.plan_key,
       cycle: subscription.cycle,
-      isActive: subscription.is_active,
+      isActive: active,
       willRenew: subscription.will_renew,
       periodStart: wallet?.period_start ?? subscription.current_period_start,
       periodEnd: wallet?.period_end ?? subscription.current_period_end,
