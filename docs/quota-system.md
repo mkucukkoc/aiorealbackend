@@ -16,14 +16,7 @@
 
 Aşağıdaki koleksiyonlar Firestore’da kullanılır:
 
-### A) `users_quota`
-- `id`: string (userId)
-- `email`: string | null
-- `status`: string | null
-- `created_at`: string
-- `updated_at`: string
-
-### B) `subscriptions_quota`
+### A) `subscriptions_quota`
 - `id`: string (userId)
 - `user_id`: string
 - `platform`: string | null
@@ -43,8 +36,8 @@ Aşağıdaki koleksiyonlar Firestore’da kullanılır:
 - `updated_at`: string
 - `created_at`: string
 
-### C) `quota_wallets`
-- `id`: string
+### B) `quota_wallets`
+- `id`: string (**docId = userId**)
 - `user_id`: string
 - `subscription_id`: string | null
 - `plan_id`: string | null
@@ -57,8 +50,9 @@ Aşağıdaki koleksiyonlar Firestore’da kullanılır:
 - `last_usage_at`: string | null
 - `created_at`: string
 - `updated_at`: string
+- **history**: `quota_wallets/{userId}/wallet_history` alt koleksiyonu (kapanan wallet snapshotları)
 
-### D) `quota_usages` (Audit Log)
+### C) `quota_usages` (Audit Log)
 - `id`: string (`${userId}_${requestId}`)
 - `user_id`: string
 - `wallet_id`: string
@@ -69,7 +63,7 @@ Aşağıdaki koleksiyonlar Firestore’da kullanılır:
 - `created_at`: string
 - `updated_at`: string
 
-### E) `webhook_events` (Idempotency)
+### D) `webhook_events` (Idempotency)
 - `id`: string (event id veya hash)
 - `rc_event_id`: string
 - `event_type`: string
@@ -85,7 +79,7 @@ Konfigürasyon `QUOTA_PLAN_CONFIG` env ile yönetilir. Varsayılan:
 
 - `premium_monthly` → **100 detect** (monthly)
 - `premium_yearly` → **1000 detect** (yearly)
-- `free` → 0 (monthly)
+- `free` → **2 detect** (monthly)
 
 Örnek JSON:
 
@@ -146,7 +140,8 @@ RC -> POST /webhooks/revenuecat
 | CANCELLATION | `will_renew=false`, premium devam |
 | EXPIRATION | premium kapanır, wallet kapanır |
 | REFUND / CHARGEBACK | premium anında kapanır, remaining=0 |
-| BILLING_ISSUE / PAUSE | premium bloklanır (status=billing_issue) |
+| BILLING_ISSUE / PAUSE | premium bloklanır (allow_usage=false), wallet kapanmaz |
+| GRACE_PERIOD | allow_usage=true (period_end’e kadar) |
 | TRANSFER | rc_app_user_id güncellenir |
 
 ## 6) Frontend Kullanımı
@@ -195,19 +190,7 @@ Success Response:
 }
 ```
 
-### 6.3 Microservice Consume (Opsiyonel)
-```
-POST /api/v1/quota/consume
-Headers:
-  Authorization: Bearer <firebase_jwt>
-  x-request-id: <uuid>
-
-Response:
-{
-  "success": true,
-  "data": { "requestId": "...", "remaining": 87 }
-}
-```
+> Not: `POST /api/v1/quota/consume` endpointi kaldırıldı. Tüketim sadece `POST /api/v1/analysis/detect` içinde yapılır.
 
 ## 7) Edge Case Listesi + Test Senaryoları
 

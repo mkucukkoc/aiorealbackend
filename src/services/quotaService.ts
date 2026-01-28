@@ -8,6 +8,7 @@ const SUBSCRIPTIONS_COLLECTION = 'subscriptions_quota';
 const WALLETS_COLLECTION = 'quota_wallets';
 const USAGES_COLLECTION = 'quota_usages';
 const WEBHOOK_EVENTS_COLLECTION = 'webhook_events';
+const WALLET_HISTORY_SUBCOLLECTION = 'wallet_history';
 
 export type SubscriptionStatus = 'active' | 'cancelled' | 'expired' | 'refunded' | 'billing_issue';
 export type WalletStatus = 'active' | 'closed';
@@ -147,10 +148,13 @@ const isExpirationEvent = (eventType: string) => ['EXPIRATION', 'EXPIRE'].includ
 const isRefundEvent = (eventType: string) => ['REFUND', 'CHARGEBACK'].includes(eventType);
 
 const isBillingIssueEvent = (eventType: string) =>
-  ['BILLING_ISSUE', 'PAUSE', 'BILLING_ISSUE_DETECTED', 'GRACE_PERIOD'].includes(eventType);
+  ['BILLING_ISSUE', 'PAUSE', 'BILLING_ISSUE_DETECTED'].includes(eventType);
+
+const isGraceEvent = (eventType: string) =>
+  ['GRACE_PERIOD', 'GRACE_PERIOD_ENTERED', 'GRACE_PERIOD_STARTED'].includes(eventType);
 
 const shouldCloseWalletStatus = (status: SubscriptionStatus) =>
-  status === 'expired' || status === 'refunded' || status === 'billing_issue';
+  status === 'expired' || status === 'refunded';
 
 class QuotaService {
   async ensureQuotaForUser(
@@ -319,6 +323,22 @@ class QuotaService {
         };
       }
 
+      const effectivePeriodEndRaw = walletData.period_end || subscription.current_period_end;
+      const effectivePeriodEnd = effectivePeriodEndRaw ? new Date(effectivePeriodEndRaw) : null;
+      const walletCreatedAt = walletData.created_at ? new Date(walletData.created_at) : null;
+
+      if (!effectivePeriodEnd || Number.isNaN(effectivePeriodEnd.getTime())) {
+        return { allowed: false, status: 'rejected', remaining: 0, walletId: walletData.id };
+      }
+
+      if (walletCreatedAt && walletCreatedAt > effectivePeriodEnd) {
+        return { allowed: false, status: 'rejected', remaining: 0, walletId: walletData.id };
+      }
+
+      if (new Date() >= effectivePeriodEnd) {
+        return { allowed: false, status: 'rejected', remaining: 0, walletId: walletData.id };
+      }
+
       if (usageSnap.exists) {
         const existingUsage = usageSnap.data() as QuotaUsageDoc;
         const remaining = Math.max(0, walletData.quota_total - walletData.quota_used);
@@ -345,7 +365,7 @@ class QuotaService {
       tx.set(usageRef as unknown as DocumentReference, {
         id: `${userId}_${requestId}`,
         user_id: userId,
-        wallet_id: userId,
+        wallet_id: walletData.id || userId,
         request_id: requestId,
         action,
         amount,
@@ -410,6 +430,9 @@ class QuotaService {
     if (!snap.exists) return null;
     const wallet = snap.data() as QuotaWalletDoc;
     if (wallet.status !== 'active') return null;
+    const periodEnd = wallet.period_end ? new Date(wallet.period_end) : null;
+    if (!periodEnd || Number.isNaN(periodEnd.getTime())) return null;
+    if (new Date() >= periodEnd) return null;
     return { ...wallet, id: wallet.id || userId };
   }
 
@@ -500,6 +523,21 @@ class QuotaService {
       },
       { merge: true }
     );
+
+    try {
+      const historyRef = walletRef.collection(WALLET_HISTORY_SUBCOLLECTION).doc();
+      await historyRef.set(
+        {
+          ...data,
+          id: historyRef.id,
+          closed_reason: options.reason,
+          closed_at: nowIso,
+        },
+        { merge: true }
+      );
+    } catch (error) {
+      logger.warn({ err: error, userId }, 'Failed to write wallet history');
+    }
   }
 
   async processRevenueCatEvent(payload: RevenueCatEventContext): Promise<void> {
@@ -554,6 +592,7 @@ class QuotaService {
     let shouldCloseWallet = false;
     let planChanged = false;
     let periodChanged = false;
+    let planChangedImmediate = false;
 
     await db.runTransaction(async (tx: Transaction) => {
       const existingSnap = await tx.get(subscriptionRef as unknown as DocumentReference);
@@ -568,10 +607,13 @@ class QuotaService {
         if (isBillingIssueEvent(eventType)) return 'billing_issue';
         if (isCancellationEvent(eventType)) return 'cancelled';
         if (isPurchaseEvent(eventType)) return 'active';
+        if (isGraceEvent(eventType)) {
+          return existing?.status === 'cancelled' ? 'cancelled' : 'active';
+        }
         return existing?.status ?? 'active';
       })();
 
-      const isActive = status === 'active' || status === 'cancelled';
+      const isActive = status === 'active' || status === 'cancelled' || (status === 'billing_issue' && isGraceEvent(eventType));
       const willRenew =
         payload.willRenew !== null && payload.willRenew !== undefined
           ? payload.willRenew
@@ -585,8 +627,12 @@ class QuotaService {
         periodEnd && existing?.current_period_end && periodEnd !== existing.current_period_end
       );
 
-      shouldOpenWallet = isActive && (isPurchaseEvent(eventType) || planChanged || periodChanged);
-      shouldCloseWallet = shouldCloseWallet || (shouldCloseWalletStatus(status) && Boolean(existing?.is_active));
+      planChangedImmediate = Boolean(planChanged && periodChanged);
+      shouldOpenWallet = isActive && (isPurchaseEvent(eventType) || periodChanged);
+      shouldCloseWallet =
+        shouldCloseWallet ||
+        (shouldCloseWalletStatus(status) && Boolean(existing?.is_active)) ||
+        planChangedImmediate;
 
       const updates: SubscriptionDoc = {
         id: payload.userId,
@@ -622,7 +668,7 @@ class QuotaService {
     }
 
     if (nextSubscription && shouldOpenWallet) {
-      await this.openWalletForSubscription(nextSubscription, planChanged || periodChanged);
+      await this.openWalletForSubscription(nextSubscription, periodChanged || planChangedImmediate);
     }
 
     await webhookRef.set(
