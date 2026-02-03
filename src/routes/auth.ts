@@ -449,7 +449,11 @@ export function createAuthRouter(): Router {
         try {
           await sendOtpEmail(email, code);
         } catch (emailError) {
-          logger.error('Failed to send password reset email:', emailError);
+          logger.error({ err: emailError, email, userId: user.id }, 'Failed to send password reset email');
+          return res.status(500).json({
+            error: 'email_send_failed',
+            message: 'Failed to send password reset code',
+          });
         }
 
         logger.info({ email, userId: user.id }, 'Password reset code generated and sent');

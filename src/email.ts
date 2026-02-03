@@ -22,10 +22,10 @@ export async function sendOtpEmail(to: string, code: string): Promise<void> {
     const mailOptions = {
       from,
       to,
-      subject: 'Avenia - Email Verification Code',
+      subject: 'AI or Real - Email Verification Code',
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #00c896;">Avenia Email Verification</h2>
+          <h2 style="color: #00c896;">AI or Real Email Verification</h2>
           <p>Hello,</p>
           <p>Please use the code below to verify your account:</p>
           <div style="background-color: #f5f5f5; padding: 20px; text-align: center; margin: 20px 0;">
@@ -34,10 +34,10 @@ export async function sendOtpEmail(to: string, code: string): Promise<void> {
           <p>This code is valid for 10 minutes.</p>
           <p>If you did not request this, you can safely ignore this email.</p>
           <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
-          <p style="color: #666; font-size: 12px;">This email was sent by the Avenia app.</p>
+          <p style="color: #666; font-size: 12px;">This email was sent by the AI or Real app.</p>
         </div>
       `,
-      text: `Avenia Email Verification Code: ${code}\n\nThis code is valid for 10 minutes.`
+      text: `AI or Real Email Verification Code: ${code}\n\nThis code is valid for 10 minutes.`
     };
 
     await transporter.sendMail(mailOptions);
