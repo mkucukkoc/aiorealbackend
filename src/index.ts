@@ -63,7 +63,7 @@ import { createAnalysisRouter } from './routes/analysis';
 // We intentionally avoid static import here
 import notificationRouter from './routes/notifications';
 import revenuecatWebhookRouter from './revenuecat_webhook/revenuecatWebhook';
-import rateLimit from 'express-rate-limit';
+import { globalIpLimiter } from './middleware/rateLimits';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './swagger';
 import { cleanupRateLimits } from './middleware/rateLimitMiddleware';
@@ -184,16 +184,8 @@ const startServer = async () => {
     app.use(cors(corsOptions));
     app.use(helmet());
 
-    // Global rate limiting
-    const limiter = rateLimit({ 
-      windowMs: 60_000, 
-      max: 100,
-      message: {
-        error: 'rate_limit_exceeded',
-        message: 'Too many requests from this IP, please try again later.'
-      }
-    });
-    app.use(limiter);
+    // Global rate limiting (IP)
+    app.use(globalIpLimiter);
 
     // Swagger documentation
     try {

@@ -9,7 +9,7 @@ import { TokenService } from '../services/tokenService';
 import { UserService } from '../services/userService';
 import { SessionService } from '../services/sessionService';
 import { auditService } from '../services/auditService';
-import { authRateLimits } from '../middleware/rateLimitMiddleware';
+import { authRateLimits } from '../middleware/rateLimits';
 import { admin } from '../firebase';
 import { logger } from '../utils/logger';
 import { cleanupDeletedAccountArtifacts, ensureFirebaseAuthUserProfile, restoreSoftDeletedUser } from '../services/reactivationService';

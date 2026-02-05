@@ -4,7 +4,7 @@ import { SessionService } from '../services/sessionService';
 import { auditService } from '../services/auditService';
 import { authenticateToken, AuthRequest } from '../middleware/authMiddleware';
 import { validate, authSchemas } from '../middleware/validationMiddleware';
-import { authRateLimits } from '../middleware/rateLimitMiddleware';
+import { authRateLimits } from '../middleware/rateLimits';
 import { RegisterRequest, LoginRequest, RefreshRequest, LogoutRequest, AuthResponse, User } from '../types/auth';
 import { StandardResponse, ResponseBuilder } from '../types/response';
 import { admin, db } from '../firebase';

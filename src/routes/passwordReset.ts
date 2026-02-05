@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { PasswordResetService } from '../services/passwordResetService';
 import { validate, authSchemas } from '../middleware/validationMiddleware';
-import { authRateLimits } from '../middleware/rateLimitMiddleware';
+import { authRateLimits } from '../middleware/rateLimits';
 import { auditService } from '../services/auditService';
 import { logger } from '../utils/logger';
 import { attachRouteLogger } from '../utils/routeLogger';

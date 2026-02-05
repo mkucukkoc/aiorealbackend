@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import axios from 'axios';
 import type { QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { authenticateToken, AuthRequest } from '../middleware/authMiddleware';
-import { authRateLimits } from '../middleware/rateLimitMiddleware';
+import { aiUserLimiter } from '../middleware/rateLimits';
 import { db, storage } from '../firebase';
 import { logger } from '../utils/logger';
 import { ResponseBuilder } from '../types/response';
@@ -375,10 +375,10 @@ export function createAnalysisRouter(): Router {
     }
   };
 
-  r.post('/forensic', authenticateToken, handleDetectRequest);
-  r.post('/detect', authenticateToken, handleDetectRequest);
+  r.post('/forensic', authenticateToken, aiUserLimiter, handleDetectRequest);
+  r.post('/detect', authenticateToken, aiUserLimiter, handleDetectRequest);
 
-  r.get('/history', authenticateToken, async (req, res) => {
+  r.get('/history', authenticateToken, aiUserLimiter, async (req, res) => {
     const requestIdHeader = req.headers['x-request-id'];
     const requestId = Array.isArray(requestIdHeader) ? requestIdHeader[0] : requestIdHeader;
     const userId = (req as AuthRequest).user?.id;
@@ -420,8 +420,8 @@ export function createAnalysisRouter(): Router {
 
   r.delete(
     '/history/:id',
-    authRateLimits.general,
     authenticateToken,
+    aiUserLimiter,
     async (req, res) => {
       const userId = (req as AuthRequest).user?.id;
       const { id } = req.params;

@@ -3,11 +3,12 @@ import { authenticateToken, AuthRequest } from '../middleware/authMiddleware';
 import { ResponseBuilder } from '../types/response';
 import { quotaService } from '../services/quotaService';
 import { premiumService } from '../services/premiumService';
+import { aiUserLimiter } from '../middleware/rateLimits';
 
 export function createQuotaRouter(): Router {
   const router = Router();
 
-  router.get('/', authenticateToken, async (req: Request, res: Response) => {
+  router.get('/', authenticateToken, aiUserLimiter, async (req: Request, res: Response) => {
     const authReq = req as AuthRequest;
     if (!authReq.user) {
       return res.status(401).json(ResponseBuilder.error('unauthorized', 'Authentication required'));
@@ -39,7 +40,7 @@ export function createQuotaRouter(): Router {
     }
   });
 
-  router.post('/consume', authenticateToken, async (req: Request, res: Response) => {
+  router.post('/consume', authenticateToken, aiUserLimiter, async (req: Request, res: Response) => {
     const authReq = req as AuthRequest;
     if (!authReq.user) {
       return res.status(401).json(ResponseBuilder.error('unauthorized', 'Authentication required'));

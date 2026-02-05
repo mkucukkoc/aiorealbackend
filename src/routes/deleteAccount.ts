@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authenticateToken, AuthRequest } from '../middleware/authMiddleware';
-import { authRateLimits } from '../middleware/rateLimitMiddleware';
+import { authRateLimits } from '../middleware/rateLimits';
 import { validate, deleteAccountSchemas, validateParams } from '../middleware/validationMiddleware';
 import { deleteAccountService, DeleteAccountError } from '../services/deleteAccountService';
 import { dataExportService } from '../services/dataExportService';
